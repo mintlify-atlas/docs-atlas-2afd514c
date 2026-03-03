@@ -1,0 +1,65 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "Intel 4004 Toolkit",
+  "projectDescription": "A comprehensive toolkit for Intel 4004 development including an assembler, emulator, and debugger.",
+  "theme": "aspen",
+  "primaryColor": "#2563eb",
+  "lightColor": "#3b82f6",
+  "darkColor": "#1e40af",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Getting Started",
+        "pages": [
+          "introduction",
+          "installation",
+          "quickstart"
+        ]
+      },
+      {
+        "group": "Tools",
+        "pages": [
+          "tools/assembler",
+          "tools/emulator",
+          "tools/debugger"
+        ]
+      },
+      {
+        "group": "Assembly Language",
+        "pages": [
+          "assembly/syntax",
+          "assembly/instructions",
+          "assembly/macros",
+          "assembly/expressions"
+        ]
+      },
+      {
+        "group": "Architecture",
+        "pages": [
+          "architecture/cpu",
+          "architecture/memory",
+          "architecture/devices"
+        ]
+      },
+      {
+        "group": "Examples",
+        "pages": [
+          "examples/hello-world",
+          "examples/echo-program"
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Enhanced assembler with convenience features beyond standard Intel 4004 assembly",
+    "Cycle-accurate CPU emulator with accurate timing",
+    "Interactive debugger with TCP interface",
+    "Virtual device emulation (keyboard and monitor)",
+    "Support for expressions, macros, and labels in assembly"
+  ],
+  "publicApiSurface": [
+    "4004-assembler <input.4004> <output.bin>",
+    "4004-emulator <executable.bin>",
+    "Debugger commands: s (step), r (run), b (breakpoint), p (print registers), m (memory)"
+  ]
+}
