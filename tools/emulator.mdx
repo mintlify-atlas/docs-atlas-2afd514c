@@ -164,18 +164,16 @@ I/O port access is synchronized using an atomic lock:
 
 This ensures keyboard input is not corrupted by concurrent access.
 
-## Debugger mode
+## Cycle-accurate timing
 
-The emulator can be modified to run with debugger support (see debugger.mdx). In debugger mode, the emulator:
+The emulator implements cycle-accurate timing to match the original Intel 4004's 740 kHz clock speed. Each instruction executes at the correct speed using busy-wait synchronization.
 
-1. Listens on TCP port 5005 (127.0.0.1:5005)
-2. Waits for debugger connection
-3. Executes instructions only when commanded
-4. Responds to debugger queries
+```zig
+const clock_speed_hz: u64 = 740_000;
+const ns_per_cycle: u64 = 1_000_000_000 / clock_speed_hz;
+```
 
-<Tip>
-To enable debugger mode, replace the `start_cpu()` call with `start_cpu_with_debugger()` and recompile.
-</Tip>
+After executing each instruction, the emulator calculates how long the instruction should take based on its byte count and busy-waits if needed to match the real hardware timing.
 
 ## Error handling
 
@@ -199,7 +197,7 @@ The address is decomposed into:
 - **Bits 4-7**: Chip number (0-15) and register (0-3)
 - **Bits 0-3**: Character position (0-15)
 
-This function is used by the debugger to inspect memory contents.
+This function could be used for debugging or memory inspection tools.
 
 ## Runtime behavior
 
@@ -210,5 +208,5 @@ The emulator runs until interrupted:
 - All threads terminate when main thread exits
 
 <Note>
-The emulator does not implement execution speed throttling - it runs at maximum speed supported by the host CPU.
+The emulator implements cycle-accurate timing at 740 kHz, matching the original Intel 4004 clock speed. Programs run at authentic speed.
 </Note>

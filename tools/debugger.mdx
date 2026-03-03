@@ -1,45 +1,42 @@
 ---
 title: Debugger
-description: Interactive debugger for Intel 4004 programs over TCP
+description: Debug Intel 4004 programs interactively
 ---
 
-The debugger provides an interactive command-line interface for stepping through Intel 4004 programs, inspecting registers and memory, and setting breakpoints. It connects to the emulator via TCP.
+<Warning>
+The debugger is currently not built as a standalone tool. The code exists in `debugger.zig` but is not included in the build configuration. This page documents the planned debugging functionality.
+</Warning>
 
-## Connection
+## Overview
 
-The debugger connects to the emulator on TCP port 5005:
+The toolkit includes debugger source code (`debugger.zig`) that provides interactive debugging capabilities via a TCP connection. However, this functionality is not currently exposed as a usable tool in the default build.
 
-```bash
-./debugger
+## Current status
+
+The `build.zig` file only builds two executables:
+
+- `4004-assembler` - The assembler tool
+- `4004-emulator` - The emulator tool
+
+The debugger source exists but is not compiled by default.
+
+## Planned debugging architecture
+
+The debugger code implements a TCP-based debugging protocol:
+
+### Connection model
+
+The debugger would connect to a modified emulator on TCP port 5005:
+
+```zig
+pub const TCP_ADDRESS = std.net.Address.initIp4(.{ 127, 0, 0, 1 }, 5005);
 ```
 
-<ParamField path="TCP_ADDRESS" type="string" default="127.0.0.1:5005">
-  The debugger connects to localhost on port 5005
-</ParamField>
+### Planned commands
 
-<Note>
-The emulator must be running in debugger mode before starting the debugger. The emulator will wait for a debugger connection before beginning execution.
-</Note>
+The debugger source code includes implementations for these commands:
 
-## Command prompt
-
-The debugger displays a `>` prompt for commands. Press Enter without a command to repeat the last command.
-
-```
-> s
-instr: LDM 5
-pc: 2
-> 
-instr: XCH 0R
-pc: 4
-```
-
-## Commands
-
-All commands are single-letter or short keywords followed by optional arguments.
-
-### Step command (s)
-
+<Accordion title="s - Step">
 Execute a single instruction and display the next instruction and program counter.
 
 ```
@@ -47,25 +44,9 @@ Execute a single instruction and display the next instruction and program counte
 instr: LDM 5
 pc: 2
 ```
+</Accordion>
 
-<Steps>
-
-<Step title="Send step command">
-  Debugger sends `s` to emulator
-</Step>
-
-<Step title="Execute instruction">
-  Emulator executes one instruction
-</Step>
-
-<Step title="Return result">
-  Emulator returns disassembled next instruction and new PC value
-</Step>
-
-</Steps>
-
-### Run command (r)
-
+<Accordion title="r - Run">
 Continue execution until a breakpoint is reached.
 
 ```
@@ -74,255 +55,116 @@ reached breakpoint
 instr: JUN 100
 pc: 100
 ```
+</Accordion>
 
-<Warning>
-If no breakpoints are set, the `r` command will run forever until manually interrupted.
-</Warning>
-
-The run command repeatedly steps the CPU and checks if the program counter matches any breakpoint address.
-
-### Breakpoint command (b)
-
+<Accordion title="b - Breakpoint">
 Set a breakpoint at a specific address.
 
 ```
 > b 256
-> b 512
 ```
 
-<ParamField path="address" type="number" required>
-  The program memory address (0-4095) where execution should pause
-</ParamField>
+The address parameter is a program memory address (0-4095).
+</Accordion>
 
-Breakpoints are stored in a list and checked after each instruction during run mode.
-
-### Print registers command (p)
-
+<Accordion title="p - Print registers">
 Display all 16 index registers.
 
 ```
 > p
-0R=5 1R=10 2R=15 3R=0 4R=3 5R=7 6R=0 7R=0 8R=1 9R=2 10R=0 11R=0 12R=0 13R=0 14R=0 15R=0
+0R=5 1R=10 2R=15 3R=0 ...
 ```
+</Accordion>
 
-All registers are displayed in the format `<number>R=<value>`.
-
-### Memory command (m)
-
-Read a single nibble from DRAM.
+<Accordion title="m - Memory">
+Read a single nibble from DRAM using three nibble parameters.
 
 ```
 > m 0 0 0
 15
-> m 1 2 5
-7
 ```
 
-<ParamField path="nibble1" type="number" required>
-  High nibble of address (bank number, 0-15)
-</ParamField>
+Parameters are: bank, chip/register, character position.
+</Accordion>
 
-<ParamField path="nibble2" type="number" required>
-  Middle nibble of address (chip and register, 0-15)
-</ParamField>
-
-<ParamField path="nibble3" type="number" required>
-  Low nibble of address (character position, 0-15)
-</ParamField>
-
-The three nibbles combine to form a 12-bit DRAM address:
-
-<Steps>
-
-<Step title="Bank selection">
-  nibble1 selects the DRAM bank (0-15)
-</Step>
-
-<Step title="Chip and register">
-  nibble2 high 2 bits = chip (0-3), low 2 bits = register (0-3)
-</Step>
-
-<Step title="Character position">
-  nibble3 selects the character within the register (0-15)
-</Step>
-
-</Steps>
-
-### Arguments command (args)
-
+<Accordion title="args - Arguments">
 Display command-line arguments stored in memory by the runtime.
 
 ```
 > args
 hello world test
 ```
+</Accordion>
 
-The command expects arguments to be stored in a specific format:
+## Emulator integration
 
-<Steps>
+The emulator source includes a `start_cpu_with_debugger()` function that:
 
-<Step title="Argument count">
-  Register 0R contains the number of arguments (argc)
-</Step>
+1. Listens on TCP port 5005
+2. Waits for debugger connection
+3. Executes instructions on command
+4. Responds to debugger queries
 
-<Step title="Argument vector pointer">
-  Registers 1R, 2R, 3R contain a 12-bit pointer to argv
-</Step>
+However, the `main()` function calls `start_cpu()` instead, so this mode is not accessible.
 
-<Step title="Argument array">
-  Each argument is represented by 6 nibbles:
-  - 3 nibbles: start address
-  - 3 nibbles: end address
-</Step>
+## Enabling debugger support
 
-<Step title="Argument strings">
-  Each character is stored as 2 nibbles (8 bits) in memory
-</Step>
-
-</Steps>
-
-The debugger iterates through all arguments and reconstructs the strings from memory.
-
-<Tip>
-The `args` command is specific to programs that follow the Intel 4004 Toolkit calling convention for storing command-line arguments.
-</Tip>
-
-## Protocol
-
-The debugger communicates with the emulator using a simple text protocol over TCP:
-
-<CodeGroup>
-
-```text Debugger → Emulator
-s
-p
-m 0 0 0
-args
-```
-
-```text Emulator → Debugger
-LDM 5
-2
-0R=5 1R=10 ...
-15
-hello world
-```
-
-</CodeGroup>
-
-All commands and responses are terminated with newline characters (`\n`).
-
-### Maximum command size
-
-Commands are limited to 1024 bytes:
-
-```zig
-pub const MAX_CMD_SIZE = 1024;
-```
-
-## Command history
-
-The debugger tracks the last executed command. Pressing Enter without typing a command repeats the last command.
-
-```
-> s
-instr: LDM 5
-pc: 2
->           ← Just press Enter
-instr: XCH 0R
-pc: 4
-```
-
-<Note>
-If no commands have been run yet, pressing Enter displays: "no commands have been run yet"
-</Note>
-
-## Error handling
-
-Invalid commands display an error message:
-
-```
-> invalid
-invalid command
-```
-
-The debugger validates:
-- Command name matches known commands
-- Required arguments are provided
-- Numeric arguments can be parsed
-
-## Disassembly
-
-The step command returns disassembled instructions, making it easy to follow program execution:
-
-```
-> s
-instr: FIM 0P 255
-pc: 4
-> s
-instr: JUN START
-pc: 6
-```
-
-Disassembly includes:
-- Instruction mnemonic
-- Arguments in appropriate format (registers as `nR`, pairs as `nP`, addresses as decimal)
-
-## Workflow example
-
-Typical debugging session:
+To enable debugging, you would need to:
 
 <Steps>
+  <Step title="Add debugger executable to build.zig">
+    ```zig
+    const debugger_exe = b.addExecutable(.{
+        .name = "4004-debugger",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/debugger.zig"),
+            .target = target,
+            .optimize = optimize
+        })
+    });
+    b.installArtifact(debugger_exe);
+    ```
+  </Step>
 
-<Step title="Start emulator in debug mode">
-  ```bash
-  ./emulator program.bin
-  # waiting for debugger to connect...
-  ```
-</Step>
+  <Step title="Modify emulator to use debugger mode">
+    In `emulator.zig`, replace the `start_cpu()` call with `start_cpu_with_debugger()` or add a command-line flag to enable it.
+  </Step>
 
-<Step title="Connect debugger">
-  ```bash
-  ./debugger
-  # debugger connected
-  ```
-</Step>
+  <Step title="Rebuild the toolkit">
+    ```bash
+    zig build
+    ```
+  </Step>
 
-<Step title="Set breakpoints">
-  ```
-  > b 100
-  > b 256
-  ```
-</Step>
-
-<Step title="Run to first breakpoint">
-  ```
-  > r
-  reached breakpoint
-  instr: LDM 10
-  pc: 100
-  ```
-</Step>
-
-<Step title="Inspect state">
-  ```
-  > p
-  0R=5 1R=0 2R=0 ...
-  > m 0 0 0
-  15
-  ```
-</Step>
-
-<Step title="Step through code">
-  ```
-  > s
-  > s
-  > s
-  ```
-</Step>
-
+  <Step title="Run emulator and debugger">
+    ```bash
+    # Terminal 1
+    ./zig-out/bin/4004-emulator program.bin
+    
+    # Terminal 2
+    ./zig-out/bin/4004-debugger
+    ```
+  </Step>
 </Steps>
 
-<Warning>
-The debugger does not support instruction disassembly modification or memory writing. It is read-only for inspection purposes.
-</Warning>
+## Alternative debugging approaches
+
+Until the debugger is properly integrated, you can:
+
+- Add print statements to the emulator source code
+- Use Zig's built-in debugger (gdb/lldb) to step through emulator execution
+- Examine the emulator's CPU state by modifying the source
+- Write test programs that output diagnostic information to the monitor
+
+## Protocol details
+
+The debugger uses a simple text-based protocol:
+
+- Commands are single letters followed by optional arguments
+- Responses are newline-terminated
+- Maximum command size is 1024 bytes
+- The debugger tracks command history and supports repeating the last command by pressing Enter
+
+<Info>
+If you're interested in using or improving the debugger, consider opening a pull request to add it to the build configuration and make it a first-class tool in the toolkit.
+</Info>
