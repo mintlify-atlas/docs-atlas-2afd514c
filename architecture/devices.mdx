@@ -1,0 +1,200 @@
+---
+title: Virtual devices
+description: Keyboard and monitor devices with port-based I/O interface
+---
+
+The Intel 4004 Toolkit includes virtual devices that communicate with the CPU through memory-mapped I/O ports. These devices emulate hardware peripherals that would have connected to the original Intel 4004.
+
+## Overview
+
+Virtual devices are defined in `devices.zig` and use port-based communication:
+
+- **Keyboard:** Input device for sending character data to the CPU
+- **Monitor:** Output device for displaying characters from the CPU
+
+Both devices use a three-port protocol with separate high/low nibble ports and a ready flag port.
+
+## Keyboard
+
+The Keyboard device simulates character input by writing to I/O ports that the CPU can read. Defined in `devices.zig:4-21`.
+
+```zig
+pub const Keyboard = struct {
+    char_port_high: *u4,
+    char_port_low: *u4,
+    char_ready_port: *u4,
+}
+```
+
+### Port structure
+
+<Tabs>
+  <Tab title="char_port_low">
+    **Type:** `*u4`
+    
+    Pointer to a 4-bit port storing the lower nibble of the input character. The Keyboard writes the lower 4 bits of each character here.
+  </Tab>
+  
+  <Tab title="char_port_high">
+    **Type:** `*u4`
+    
+    Pointer to a 4-bit port storing the upper nibble of the input character. The Keyboard writes the upper 4 bits of each character here.
+  </Tab>
+  
+  <Tab title="char_ready_port">
+    **Type:** `*u4`
+    
+    Pointer to a 4-bit port used as a flag register. The least significant bit indicates whether a character is ready:
+    
+    - **Bit 0 = 1:** Character is ready to be read
+    - **Bit 0 = 0:** No character available
+  </Tab>
+</Tabs>
+
+### Methods
+
+<Accordion title="send_char(char: u8)">
+Sends a single 8-bit character to the CPU. Defined in `devices.zig:15-20`.
+
+**Behavior:**
+
+1. Waits while `char_ready_port` bit 0 is set (CPU hasn't read previous character)
+2. Splits the character into high and low nibbles
+3. Writes low nibble to `char_port_low`
+4. Writes high nibble to `char_port_high`
+5. Sets bit 0 of `char_ready_port` to signal data is ready
+
+```zig
+pub fn send_char(self: *Keyboard, char: u8) void {
+    while (self.char_ready_port.* & 1 == 1) {}
+    self.char_port_low.* = @intCast(char & 0xF);
+    self.char_port_high.* = @intCast((char & 0xF0) >> 4);
+    self.char_ready_port.* |= 1;
+}
+```
+
+<Note>
+The method blocks until the previous character is read by the CPU, implementing flow control through the ready flag.
+</Note>
+</Accordion>
+
+<Accordion title="send_string(str: []u8)">
+Sends multiple characters by calling `send_char()` for each byte. Defined in `devices.zig:9-12`.
+
+```zig
+pub fn send_string(self: *Keyboard, str: []u8) void {
+    for (str) |char| {
+        self.send_char(char);
+    }
+}
+```
+</Accordion>
+
+## Monitor
+
+The Monitor device reads characters from I/O ports and displays them to stdout, simulating a display terminal. Defined in `devices.zig:23-45`.
+
+```zig
+pub const Monitor = struct {
+    char_port_low: *u4,
+    char_port_high: *u4,
+    char_ready_port: *u4,
+}
+```
+
+### Port structure
+
+<Tabs>
+  <Tab title="char_port_low">
+    **Type:** `*u4`
+    
+    Pointer to a 4-bit port where the CPU writes the lower nibble of output characters.
+  </Tab>
+  
+  <Tab title="char_port_high">
+    **Type:** `*u4`
+    
+    Pointer to a 4-bit port where the CPU writes the upper nibble of output characters.
+  </Tab>
+  
+  <Tab title="char_ready_port">
+    **Type:** `*u4`
+    
+    Pointer to a 4-bit port used as a flag register. The least significant bit indicates character availability:
+    
+    - **Bit 0 = 1:** Character is ready to be displayed
+    - **Bit 0 = 0:** No character available
+  </Tab>
+</Tabs>
+
+### Methods
+
+<Accordion title="turn_on()">
+Starts the monitor's main loop, continuously reading and displaying characters. Defined in `devices.zig:28-44`.
+
+**Behavior:**
+
+1. Opens stdout for writing
+2. Enters an infinite loop:
+   - Waits while `char_ready_port` bit 0 is clear (no character ready)
+   - Reads low nibble from `char_port_low`
+   - Reads high nibble from `char_port_high`
+   - Combines nibbles into an 8-bit character
+   - If character is DEL (0x7F), outputs backspace sequence to erase
+   - Outputs the character to stdout
+   - Clears bit 0 of `char_ready_port` to signal character was read
+
+```zig
+pub fn turn_on(self: *Monitor) !void {
+    var stdout_writer = std.fs.File.stdout().writer(&.{});
+    const stdout = &stdout_writer.interface;
+    while (true) {
+        while (self.char_ready_port.* & 1 == 0) {}
+
+        const char_low: u8 = self.char_port_low.*;
+        const char_high: u8 = self.char_port_high.*;
+        const char = (char_high << 4) | char_low;
+        if (char == std.ascii.control_code.del) {
+            try stdout.print("{c} {c}", .{ std.ascii.control_code.bs, std.ascii.control_code.bs });
+        }
+        try stdout.print("{c}", .{char});
+
+        self.char_ready_port.* &= 0b1110;
+    }
+}
+```
+
+<Info>
+The DEL character (ASCII 0x7F) receives special handling: it outputs a backspace-space-backspace sequence to visually erase the previous character, simulating a backspace key.
+</Info>
+</Accordion>
+
+## Port-based I/O protocol
+
+Both devices follow a shared communication protocol:
+
+### Character transmission
+
+1. **Split 8-bit character** into two 4-bit nibbles (high and low)
+2. **Write nibbles** to separate high/low ports
+3. **Set ready flag** (bit 0 of ready port) to indicate data availability
+4. **Wait for acknowledgment** by polling the ready flag
+5. **Clear ready flag** after the other party reads the data
+
+<Note>
+This protocol enables bidirectional flow control without interrupts, matching the polling-based I/O model of the original Intel 4004.
+</Note>
+
+### Port initialization
+
+Device ports must be initialized with pointers to specific I/O ports in the CPU's Data RAM or ROM port arrays. The CPU program is responsible for:
+
+- Allocating port numbers for each device
+- Creating device instances with pointers to those ports
+- Ensuring sender and receiver use the same port addresses
+
+## Device threading
+
+<Info>
+In typical usage, the Monitor runs in a separate thread calling `turn_on()` in an infinite loop, while the main thread controls the CPU and Keyboard. This allows simultaneous input and output operations.
+</Info>

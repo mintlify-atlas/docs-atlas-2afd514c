@@ -1,0 +1,152 @@
+---
+title: Macros
+description: Built-in macros for the Intel 4004 assembler
+---
+
+## Overview
+
+Macros provide higher-level operations that expand into multiple assembly instructions. They are invoked with the `#` prefix.
+
+```asm
+#CALL SUBROUTINE   / Macro invocation
+```
+
+## Built-in macros
+
+### CALL - Long subroutine call
+
+**Syntax:** `#CALL address`
+
+Performs a subroutine call that can cross page boundaries. This is more robust than `JMS` for larger programs.
+
+```asm
+#CALL PRINT_CHAR    / Call the PRINT_CHAR subroutine
+#CALL MALLOC        / Call the MALLOC function
+```
+
+**Expansion:**
+
+The `#CALL` macro expands to a sequence that:
+1. Saves the return address (current PC + 14) to registers 8R-10R
+2. Pushes each nibble of the return address to the stack using `PUSH_4_FROM_8R`
+3. Performs an unconditional jump to the target address
+
+```asm
+/ #CALL TARGET expands to:
+*+14 -> 8R _ _
+JMS PUSH_4_FROM_8R
+*+10 -> _ 8R _
+JMS PUSH_4_FROM_8R
+*+6 -> _ _ 8R
+JMS PUSH_4_FROM_8R
+JUN TARGET
+```
+
+<Note>
+The `#CALL` macro requires `PUSH_4_FROM_8R` to be defined in your program. See the example code in `main.4004` for the implementation.
+</Note>
+
+<Info>
+Use `#CALL` instead of `JMS` when:
+- Your subroutine might be on a different 256-byte page
+- You need a consistent calling convention across your program
+- You're building a larger application with many subroutines
+</Info>
+
+### LJCN - Long conditional jump
+
+**Syntax:** `#LJCN condition target`
+
+Performs a conditional jump that can cross page boundaries. The standard `JCN` instruction can only jump within the current 256-byte page.
+
+```asm
+#LJCN Z? LOOP_START    / Jump to LOOP_START if zero
+#LJCN NZ? ERROR        / Jump to ERROR if not zero  
+#LJCN C? OVERFLOW      / Jump to OVERFLOW if carry set
+#LJCN NC? CONTINUE     / Jump to CONTINUE if carry clear
+```
+
+**Available conditions:**
+- `Z?` - Jump if accumulator is zero
+- `NZ?` - Jump if accumulator is not zero
+- `C?` - Jump if carry flag is set
+- `NC?` - Jump if carry flag is clear
+
+**Expansion:**
+
+The `#LJCN` macro inverts the condition, skips ahead 4 bytes if the inverted condition is true, then performs an unconditional jump:
+
+```asm
+/ #LJCN C? TARGET expands to:
+JCN NC? *+4    / Skip the JUN if carry is NOT set
+JUN TARGET     / Unconditional jump to target
+
+/ #LJCN Z? TARGET expands to:
+JCN NZ? *+4    / Skip the JUN if NOT zero
+JUN TARGET     / Unconditional jump to target
+```
+
+<Warning>
+The `#LJCN` macro uses the inverted condition logic. Make sure you understand that `#LJCN C?` means "jump if carry" even though internally it uses `JCN NC?` to skip the jump when carry is NOT set.
+</Warning>
+
+## Example usage
+
+Here's a practical example from the sample code showing both macros in use:
+
+```asm
+POLL_KB,
+    #CALL READ_CHAR           / Call READ_CHAR subroutine
+    0P -> 6P                  / Save result
+    FIM 1P '\d'               / Check for delete
+    #CALL CMP_8
+    LD 0R
+    #LJCN NZ? DELETE          / Long jump to DELETE if match
+    
+    6P -> 0P
+    #CALL PRINT_CHAR          / Call PRINT_CHAR subroutine
+    
+    6P -> 0P
+    FIM 1P '\n'
+    #CALL CMP_8
+    LD 0R
+    #LJCN NZ? ENTER           / Long jump to ENTER if match
+    
+    JUN POLL_KB               / Regular jump (same page)
+```
+
+## Return from CALL
+
+Functions called with `#CALL` must return using the `RETURN` label instead of `BBL`. The sample code includes a `RETURN` implementation that:
+
+1. Pops the return address from the stack
+2. Writes a `JUN` instruction to a specific location in program RAM
+3. Jumps to that self-modified code to return
+
+```asm
+MY_FUNCTION,
+    / ... function code ...
+    JUN RETURN    / Return to caller
+```
+
+<Note>
+The `RETURN` mechanism uses self-modifying code via the `WPM` instruction. This is a clever technique specific to the 4004's architecture.
+</Note>
+
+## Macro argument requirements
+
+### CALL
+- **Arguments:** 1 (the target address)
+- **Type:** Address or label
+- **Error:** Returns `error.not_1_call_argument` if argument count is wrong
+
+### LJCN  
+- **Arguments:** 2 (condition and target address)
+- **Type:** Condition code (`C?`, `NC?`, `Z?`, `NZ?`) and address/label
+- **Errors:** 
+  - `error.not_2_ljcn_arguments` if argument count is wrong
+  - `error.invalid_condition` if condition is not recognized
+
+## Writing custom macros
+
+The assembler does not currently support user-defined macros. Only the two built-in macros (`CALL` and `LJCN`) are available. Custom macros would require modifying the `getMacroReplacement` function in `assembler.zig`.

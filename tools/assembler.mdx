@@ -1,0 +1,262 @@
+---
+title: Assembler
+description: Assemble Intel 4004 assembly code into executable binaries
+---
+
+The assembler converts Intel 4004 assembly source code into executable binary format. It supports standard 4004 instructions plus extended syntax for register operations and macros.
+
+## Command line usage
+
+The assembler requires exactly two arguments:
+
+```bash
+./assembler <input_file> <output_file>
+```
+
+<ParamField path="input_file" type="string" required>
+  Path to the assembly source file (.asm)
+</ParamField>
+
+<ParamField path="output_file" type="string" required>
+  Path where the assembled binary will be written
+</ParamField>
+
+## Input format
+
+Assembly source files use a line-based format with support for labels, instructions, and directives.
+
+### Labels
+
+Labels are identifiers followed by a comma:
+
+```asm
+START,
+LOOP,
+```
+
+Labels automatically receive the address type and can be referenced by instructions.
+
+### Instructions
+
+Standard Intel 4004 mnemonics are supported. Instructions can take various argument types:
+
+```asm
+LDM 5        / Load immediate value
+ADD 3R       / Add register 3
+JUN START    / Jump to label
+```
+
+### Comments
+
+Comments begin with `/` and continue to end of line:
+
+```asm
+LDM 10  / Load the value 10
+```
+
+## Number formats
+
+The assembler supports multiple number literal formats:
+
+<CodeGroup>
+
+```asm Decimal
+LDM 15
+```
+
+```asm Binary
+LDM 1111B
+```
+
+```asm Register
+LD 7R
+```
+
+```asm Register pair
+FIM 2P 255
+```
+
+```asm Character
+LDM 'A'
+```
+
+</CodeGroup>
+
+### Character literals
+
+Character literals support escape sequences:
+
+- `'\n'` - Newline
+- `'\t'` - Tab
+- `'\a'` - Bell (0x07)
+- `'\d'` - Delete (0x7F)
+- `'\\'` - Backslash
+- `'\''` - Single quote
+
+## Expressions
+
+The assembler supports arithmetic expressions with operators:
+
+<Steps>
+
+<Step title="Addition operator (+)">
+  Add two values together
+
+  ```asm
+  JUN START+10
+  ```
+</Step>
+
+<Step title="Subtraction operator (-)">
+  Subtract second value from first
+
+  ```asm
+  JUN END-5
+  ```
+</Step>
+
+<Step title="Nibble extraction (@)">
+  Extract a specific nibble (4 bits) from a number
+
+  ```asm
+  LDM 255@1    / Gets nibble 1 (value 15)
+  ```
+</Step>
+
+<Step title="Program counter (*)">
+  Current assembly address
+
+  ```asm
+  *+4          / Four bytes ahead
+  ```
+</Step>
+
+</Steps>
+
+## Directives
+
+### Origin directive
+
+Set the assembly address:
+
+```asm
+= 256        / Start assembling at address 256
+```
+
+<Warning>
+Origin expressions cannot contain labels, only numeric literals and the program counter (`*`).
+</Warning>
+
+### Equate directive
+
+Define named constants:
+
+```asm
+STACK_SIZE = 32
+MAX_COUNT = 15
+```
+
+Equates can reference labels and use expressions.
+
+## Extended syntax
+
+The assembler provides high-level syntax that expands into multiple instructions.
+
+### Arrow operator (->)
+
+Load values into registers:
+
+```asm
+255 -> 0R 1R     / Load 15 into 0R, 15 into 1R
+0R 1R -> 2R 3R   / Copy 0R to 2R, 1R to 3R
+```
+
+The arrow operator expands to `LDM`/`LD` and `XCH` instructions.
+
+<Note>
+Use underscore `_` as a placeholder to skip destination registers:
+
+```asm
+255 -> _ 1R      / Only load into 1R
+```
+</Note>
+
+### Add-assign operator (+=)
+
+Add values to registers:
+
+```asm
+1R 2R += 5       / Add 5 to multi-register value
+```
+
+Expands to `CLC`, `LDM`/`LD`, `ADD`, and `XCH` instructions.
+
+<Warning>
+Placeholders (`_`) are not allowed in add-assign operations.
+</Warning>
+
+### Subtract-assign operator (-=)
+
+Subtract values from registers:
+
+```asm
+1R 2R -= 3       / Subtract 3 from multi-register value
+```
+
+Expands to `CLC`, `LDM`/`LD`, `SUB`, `XCH`, and `CMC` instructions (except last `CMC`).
+
+<Warning>
+Placeholders (`_`) are not allowed in subtract-assign operations.
+</Warning>
+
+## Macros
+
+### CALL macro
+
+Implements a subroutine call by pushing the return address:
+
+```asm
+#CALL SUBROUTINE
+```
+
+Expands to save the return address in three parts (using registers 8R) and jump to the target.
+
+### LJCN macro
+
+Long conditional jump (conditional jump to any address):
+
+```asm
+#LJCN Z? TARGET      / Jump to TARGET if zero
+#LJCN NC? HANDLER    / Jump to HANDLER if not carry
+```
+
+Supports conditions: `Z?`, `NZ?`, `C?`, `NC?`
+
+Expands to a conditional jump over an unconditional jump.
+
+## Condition codes
+
+Condition arguments use the `?` suffix:
+
+- `Z?` - Zero (0b0100)
+- `NZ?` - Not zero (0b1100)
+- `C?` - Carry (0b0010)
+- `NC?` - Not carry (0b1010)
+
+## Error handling
+
+The assembler validates:
+
+- Type mismatches between arguments and instruction requirements
+- Label redefinitions
+- 8-bit jumps across page boundaries
+- Expression overflow
+- Invalid mnemonics and conditions
+
+<Tip>
+The assembler performs two-pass assembly: first pass collects label addresses, second pass resolves all references and generates code.
+</Tip>
+
+## Output format
+
+The assembled output is a raw binary file of exactly 4096 bytes, representing the full Intel 4004 program memory space. Unwritten addresses are zero-filled.

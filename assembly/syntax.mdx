@@ -1,0 +1,204 @@
+---
+title: Assembly syntax
+description: Learn the syntax rules for Intel 4004 assembly language
+---
+
+## Basic structure
+
+Each line of assembly code can contain:
+
+- An optional label (ending with `,`)
+- An instruction, directive, macro, or expression
+- Comments (starting with `/`)
+
+```asm
+LABEL, ADD 0R  / This is a comment
+       SUB 1R  / Instructions can be on lines without labels
+```
+
+## Labels
+
+Labels mark specific addresses in your program and must end with a comma:
+
+```asm
+START,    / Label marking the start
+    JUN START  / Jump to the START label
+
+LOOP,     / Another label
+    INC 0R
+    JCN NZ? LOOP
+```
+
+<Note>
+Labels are automatically assigned the `.address` type and can be used as jump targets or in expressions.
+</Note>
+
+## Comments
+
+Comments begin with `/` and continue to the end of the line:
+
+```asm
+/ This is a full-line comment
+INC 0R  / This is an end-of-line comment
+```
+
+## Directives
+
+### Origin directive
+
+Set the program counter to a specific address using the `=` directive:
+
+```asm
+= 256    / Set origin to address 256
+= 0x100  / Same as above
+```
+
+<Warning>
+The origin expression cannot contain labels. Only numeric values are allowed.
+</Warning>
+
+### Equate directive
+
+Define named constants using the `name = value` syntax:
+
+```asm
+EPB = 1              / End pointer bank
+EPA = 0              / End pointer address
+AS1 = 1              / First nibble of allocation start
+KEYBOARD_PORT = 2    / Keyboard ready port
+```
+
+Equates can reference previously defined labels and other equates:
+
+```asm
+BUFFER_SIZE = 128
+BUFFER_END = BUFFER_START + BUFFER_SIZE
+```
+
+## Standalone data
+
+You can embed raw data bytes using standalone numeric expressions:
+
+```asm
+DATA_SECTION,
+    'e'  / Character literal
+    'c'
+    'h'
+    'o'
+    255  / Decimal number
+    0xAB / Hex number (if supported)
+```
+
+## Whitespace
+
+Whitespace (spaces and tabs) separates tokens but is otherwise ignored. Instructions and arguments can be formatted for readability:
+
+```asm
+FIM 0P 5     / Spaced for alignment
+JMS PUSH_4   / Different spacing is fine
+```
+
+## Number formats
+
+The assembler supports several number formats:
+
+<Tabs>
+  <Tab title="Decimal">
+    Default format for numbers:
+    ```asm
+    LDM 10
+    FIM 0P 255
+    ```
+  </Tab>
+  <Tab title="Binary">
+    Binary numbers end with `B`:
+    ```asm
+    LDM 1010B    / Binary 1010 = 10 decimal
+    FIM 0P 11111111B
+    ```
+  </Tab>
+  <Tab title="Registers">
+    Registers end with `R`:
+    ```asm
+    ADD 0R       / Register 0
+    XCH 15R      / Register 15
+    ```
+  </Tab>
+  <Tab title="Register pairs">
+    Register pairs end with `P`:
+    ```asm
+    FIM 0P 42    / Register pair 0 (0R and 1R)
+    SRC 3P       / Register pair 3 (6R and 7R)
+    ```
+  </Tab>
+</Tabs>
+
+## Conditions
+
+Conditions are used with jump instructions and end with `?`:
+
+```asm
+JCN Z? LABEL    / Jump if zero
+JCN NZ? LABEL   / Jump if not zero
+JCN C? LABEL    / Jump if carry
+JCN NC? LABEL   / Jump if not carry
+```
+
+Available conditions:
+- `Z?` - Zero (accumulator is 0)
+- `NZ?` - Not zero
+- `C?` - Carry set
+- `NC?` - Carry not set
+
+## Character literals
+
+Character literals are enclosed in single quotes:
+
+```asm
+FIM 0P 'A'    / ASCII character A
+FIM 0P ' '    / Space character
+```
+
+Supported escape sequences:
+- `\n` - Newline
+- `\t` - Tab
+- `\a` - Alert/bell
+- `\d` - Delete
+- `\\` - Backslash
+- `\'` - Single quote
+
+```asm
+FIM 0P '\n'   / Newline character
+FIM 0P '\\\\' / Backslash character
+```
+
+## Special symbols
+
+### Current address (`*`)
+
+The `*` symbol represents the current program counter:
+
+```asm
+*+14 -> 8R _ _     / Current address plus 14
+JCN NC? *+4        / Skip ahead 4 bytes
+```
+
+### Placeholder (`_`)
+
+The underscore is used as a placeholder in source/dest expressions:
+
+```asm
+*+14 -> 8R _ _     / Write to 8R, skip two positions
+128 -> 0R 1R 2R    / Write to all three registers
+```
+
+## Case sensitivity
+
+Instructions, registers, and conditions are case-sensitive:
+
+```asm
+ADD 0R    / Correct
+add 0r    / Incorrect
+JCN NZ?   / Correct
+jcn nz?   / Incorrect
+```

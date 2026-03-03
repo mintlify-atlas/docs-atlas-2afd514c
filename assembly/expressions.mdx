@@ -1,0 +1,375 @@
+---
+title: Expressions
+description: Expression syntax and operators for Intel 4004 assembly
+---
+
+## Overview
+
+Expressions allow you to compute values at assembly time using operators and operands. The assembler supports arithmetic operations, character literals, and special symbols.
+
+## Simple expressions
+
+### Numeric literals
+
+<Tabs>
+  <Tab title="Decimal">
+    Standard base-10 numbers:
+    ```asm
+    LDM 10        / Decimal 10
+    FIM 0P 255    / Decimal 255
+    ```
+  </Tab>
+  
+  <Tab title="Binary">
+    Binary numbers end with `B`:
+    ```asm
+    LDM 1010B     / Binary 1010 = decimal 10
+    LDM 1111B     / Binary 1111 = decimal 15
+    ```
+  </Tab>
+  
+  <Tab title="Registers">
+    Register numbers end with `R`:
+    ```asm
+    ADD 0R        / Register 0
+    XCH 15R       / Register 15
+    ```
+  </Tab>
+  
+  <Tab title="Register pairs">
+    Register pair numbers end with `P`:
+    ```asm
+    FIM 0P 42     / Register pair 0
+    SRC 7P        / Register pair 7
+    ```
+  </Tab>
+</Tabs>
+
+### Character literals
+
+Single characters enclosed in single quotes are converted to their ASCII values:
+
+```asm
+FIM 0P 'A'      / ASCII 65
+FIM 0P ' '      / ASCII 32 (space)
+FIM 0P '0'      / ASCII 48
+```
+
+**Escape sequences:**
+
+<AccordionGroup>
+  <Accordion title="\n - Newline">
+    ```asm
+    FIM 0P '\n'   / ASCII 10 (line feed)
+    ```
+  </Accordion>
+  
+  <Accordion title="\t - Tab">
+    ```asm
+    FIM 0P '\t'   / ASCII 9 (horizontal tab)
+    ```
+  </Accordion>
+  
+  <Accordion title="\a - Alert">
+    ```asm
+    FIM 0P '\a'   / ASCII 7 (bell)
+    ```
+  </Accordion>
+  
+  <Accordion title="\d - Delete">
+    ```asm
+    FIM 0P '\d'   / ASCII 127 (delete)
+    ```
+  </Accordion>
+  
+  <Accordion title="\\\\ - Backslash">
+    ```asm
+    FIM 0P '\\\\'   / ASCII 92 (backslash)
+    ```
+  </Accordion>
+  
+  <Accordion title="\' - Single quote">
+    ```asm
+    FIM 0P '\''   / ASCII 39 (single quote)
+    ```
+  </Accordion>
+</AccordionGroup>
+
+<Warning>
+Character literals must contain exactly one character (or escape sequence). Multi-character strings cause an `error.multiple_chars_in_char_literal`.
+</Warning>
+
+### Labels and symbols
+
+Labels represent addresses and can be used in expressions:
+
+```asm
+START,
+    JUN START      / Use label as address
+    
+BUFFER = 0x100
+FIM 0P BUFFER      / Use equate in expression
+```
+
+### Current address (`*`)
+
+The `*` symbol represents the current program counter:
+
+```asm
+JCN Z? *+4         / Skip ahead 4 bytes
+*+14 -> 8R _ _     / Current address plus 14
+```
+
+## Binary operators
+
+### Addition (`+`)
+
+Adds two expressions. The result type is the type of the first operand.
+
+```asm
+LOOP = START + 10      / LOOP is 10 bytes after START
+JUN BUFFER + 5         / Jump to 5 bytes past BUFFER
+*+14 -> 8R _ _         / Current PC plus 14
+```
+
+**Example from main.4004:**
+```asm
+*+14 -> 8R _ _
+JMS PUSH_4_FROM_8R
+*+10 -> _ 8R _         / Return address calculation
+JMS PUSH_4_FROM_8R
+*+6 -> _ _ 8R
+JMS PUSH_4_FROM_8R
+```
+
+### Subtraction (`-`)
+
+Subtracts the second expression from the first. The result type is the type of the first operand.
+
+```asm
+SIZE = END - START     / Calculate size between labels
+OFFSET = CURRENT - 100 / Offset from a base
+```
+
+**Example from main.4004:**
+```asm
+/ Increment operations
+0R 1R 2R += 1
+/ Decrement operations  
+7P -= 3
+```
+
+### Nibble extraction (`@`)
+
+Extracts a specific 4-bit nibble from a number. The syntax is `number@nibble_index` where nibble 0 is the least significant nibble.
+
+```asm
+0x1234@0    / Returns 0x4 (least significant nibble)
+0x1234@1    / Returns 0x3
+0x1234@2    / Returns 0x2
+0x1234@3    / Returns 0x1 (most significant nibble)
+```
+
+**Type requirements:**
+- The left operand must be a number type
+- Returns an `error.nibble_from_non_number` if applied to non-numeric types
+- The right operand is the nibble index (0-based, up to 15 for 64-bit values)
+
+**Example usage:**
+```asm
+VALUE = 0xABCD
+LOW_NIBBLE = VALUE@0    / 0xD
+HIGH_NIBBLE = VALUE@3   / 0xA
+```
+
+<Info>
+The nibble extraction operator is useful for:
+- Splitting multi-byte values
+- Extracting specific bit fields
+- Processing individual digits in BCD arithmetic
+</Info>
+
+## Expression types
+
+Every expression has a type that determines how it can be used:
+
+<Tabs>
+  <Tab title="number">
+    Generic numeric values:
+    ```asm
+    LDM 5          / number
+    LDM 1111B      / number (binary)
+    LDM 'A'        / number (from char)
+    ```
+  </Tab>
+  
+  <Tab title="register">
+    Register references (0R-15R):
+    ```asm
+    ADD 0R         / register
+    XCH 8R         / register
+    ```
+  </Tab>
+  
+  <Tab title="register_pair">
+    Register pair references (0P-7P):
+    ```asm
+    FIM 0P 42      / register_pair
+    SRC 3P         / register_pair
+    ```
+  </Tab>
+  
+  <Tab title="address">
+    Memory addresses (labels, `*`, address arithmetic):
+    ```asm
+    JUN START      / address (label)
+    JUN *+4        / address (current PC + offset)
+    ```
+  </Tab>
+  
+  <Tab title="condition">
+    Condition codes (Z?, NZ?, C?, NC?):
+    ```asm
+    JCN Z? LABEL   / condition
+    JCN C? LOOP    / condition
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+Type mismatches cause assembly errors. For example, using a register where an address is expected will fail with `error.type_mismatch`.
+</Warning>
+
+## Complex expressions
+
+Expressions can combine operators, but are limited to 3 tokens (operand-operator-operand):
+
+```asm
+/ Valid expressions (3 tokens)
+START + 10              / address + number
+*+14                    / address + number
+0x1234@2                / number @ index
+END - START             / address - address
+
+/ Invalid: too many operators
+START + 10 + 5          / Error: too many tokens
+```
+
+<Note>
+The assembler parses expressions into a maximum of 3 tokens. For more complex calculations, use equates to build up the result step-by-step.
+</Note>
+
+## Type inference
+
+Expression types are inferred based on:
+
+1. **Special symbols:**
+   - `*` → `address`
+   - `label,` → `address`
+
+2. **Suffix notation:**
+   - `nR` → `register`
+   - `nP` → `register_pair`
+   - `nB` → `number`
+   - `n?` → `condition`
+
+3. **Character literals:**
+   - `'c'` → `number`
+
+4. **Plain numbers:**
+   - `123` → `number`
+
+5. **Binary operations:**
+   - `addr + num` → `address`
+   - `num @ idx` → `number`
+
+## Expression errors
+
+Common expression-related errors:
+
+<AccordionGroup>
+  <Accordion title="invalid_char_expr">
+    Character literal format is invalid (missing quotes or malformed).
+    ```asm
+    FIM 0P 'AB'    / Error: multiple characters
+    FIM 0P A'      / Error: missing opening quote
+    ```
+  </Accordion>
+  
+  <Accordion title="unrecognized_escape_sequence">
+    Escape sequence is not one of the supported sequences.
+    ```asm
+    FIM 0P '\x'    / Error: \x is not supported
+    ```
+  </Accordion>
+  
+  <Accordion title="unterminated_char_literal">
+    Character literal missing closing quote.
+    ```asm
+    FIM 0P 'A      / Error: no closing quote
+    ```
+  </Accordion>
+  
+  <Accordion title="nibble_from_non_number">
+    Nibble extraction (@) used on non-numeric type.
+    ```asm
+    LABEL@0        / Error: can't extract nibble from address
+    ```
+  </Accordion>
+  
+  <Accordion title="wrong_number_of_sub_expressions">
+    Expression has too many or too few parts.
+    ```asm
+    VALUE + 1 + 2  / Error: too many operators
+    ```
+  </Accordion>
+  
+  <Accordion title="type_mismatch">
+    Expression result type doesn't match expected argument type.
+    ```asm
+    ADD 5          / Error: expected register, got number
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Practical examples
+
+Here are real examples from the sample code:
+
+### Return address calculation
+```asm
+/ Save return address for CALL macro
+*+14 -> 8R _ _           / PC+14 to first register
+JMS PUSH_4_FROM_8R
+*+10 -> _ 8R _           / PC+10 to second register  
+JMS PUSH_4_FROM_8R
+*+6 -> _ _ 8R            / PC+6 to third register
+JMS PUSH_4_FROM_8R
+JUN TARGET
+```
+
+### Constant definitions
+```asm
+EPB = 1                  / End pointer bank
+EPA = 0                  / End pointer address
+AS1 = 1                  / Allocation start nibble 1
+AS2 = 0                  / Allocation start nibble 2
+AS3 = 3                  / Allocation start nibble 3
+```
+
+### Port address arithmetic
+```asm
+KEYBOARD_CHAR_PORT_1 = 0
+KEYBOARD_CHAR_PORT_2 = 1
+KEYBOARD_CHAR_READY_PORT = 2
+
+/ Use the constants
+KEYBOARD_CHAR_READY_PORT -> 2R
+SRC 1P
+```
+
+### Buffer offset calculation
+```asm
+CMD_START_STACK_OFFSET = 0
+CMD_END_STACK_OFFSET = 3     / 3 nibbles after start
+```

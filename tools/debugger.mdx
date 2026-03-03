@@ -1,0 +1,328 @@
+---
+title: Debugger
+description: Interactive debugger for Intel 4004 programs over TCP
+---
+
+The debugger provides an interactive command-line interface for stepping through Intel 4004 programs, inspecting registers and memory, and setting breakpoints. It connects to the emulator via TCP.
+
+## Connection
+
+The debugger connects to the emulator on TCP port 5005:
+
+```bash
+./debugger
+```
+
+<ParamField path="TCP_ADDRESS" type="string" default="127.0.0.1:5005">
+  The debugger connects to localhost on port 5005
+</ParamField>
+
+<Note>
+The emulator must be running in debugger mode before starting the debugger. The emulator will wait for a debugger connection before beginning execution.
+</Note>
+
+## Command prompt
+
+The debugger displays a `>` prompt for commands. Press Enter without a command to repeat the last command.
+
+```
+> s
+instr: LDM 5
+pc: 2
+> 
+instr: XCH 0R
+pc: 4
+```
+
+## Commands
+
+All commands are single-letter or short keywords followed by optional arguments.
+
+### Step command (s)
+
+Execute a single instruction and display the next instruction and program counter.
+
+```
+> s
+instr: LDM 5
+pc: 2
+```
+
+<Steps>
+
+<Step title="Send step command">
+  Debugger sends `s` to emulator
+</Step>
+
+<Step title="Execute instruction">
+  Emulator executes one instruction
+</Step>
+
+<Step title="Return result">
+  Emulator returns disassembled next instruction and new PC value
+</Step>
+
+</Steps>
+
+### Run command (r)
+
+Continue execution until a breakpoint is reached.
+
+```
+> r
+reached breakpoint
+instr: JUN 100
+pc: 100
+```
+
+<Warning>
+If no breakpoints are set, the `r` command will run forever until manually interrupted.
+</Warning>
+
+The run command repeatedly steps the CPU and checks if the program counter matches any breakpoint address.
+
+### Breakpoint command (b)
+
+Set a breakpoint at a specific address.
+
+```
+> b 256
+> b 512
+```
+
+<ParamField path="address" type="number" required>
+  The program memory address (0-4095) where execution should pause
+</ParamField>
+
+Breakpoints are stored in a list and checked after each instruction during run mode.
+
+### Print registers command (p)
+
+Display all 16 index registers.
+
+```
+> p
+0R=5 1R=10 2R=15 3R=0 4R=3 5R=7 6R=0 7R=0 8R=1 9R=2 10R=0 11R=0 12R=0 13R=0 14R=0 15R=0
+```
+
+All registers are displayed in the format `<number>R=<value>`.
+
+### Memory command (m)
+
+Read a single nibble from DRAM.
+
+```
+> m 0 0 0
+15
+> m 1 2 5
+7
+```
+
+<ParamField path="nibble1" type="number" required>
+  High nibble of address (bank number, 0-15)
+</ParamField>
+
+<ParamField path="nibble2" type="number" required>
+  Middle nibble of address (chip and register, 0-15)
+</ParamField>
+
+<ParamField path="nibble3" type="number" required>
+  Low nibble of address (character position, 0-15)
+</ParamField>
+
+The three nibbles combine to form a 12-bit DRAM address:
+
+<Steps>
+
+<Step title="Bank selection">
+  nibble1 selects the DRAM bank (0-15)
+</Step>
+
+<Step title="Chip and register">
+  nibble2 high 2 bits = chip (0-3), low 2 bits = register (0-3)
+</Step>
+
+<Step title="Character position">
+  nibble3 selects the character within the register (0-15)
+</Step>
+
+</Steps>
+
+### Arguments command (args)
+
+Display command-line arguments stored in memory by the runtime.
+
+```
+> args
+hello world test
+```
+
+The command expects arguments to be stored in a specific format:
+
+<Steps>
+
+<Step title="Argument count">
+  Register 0R contains the number of arguments (argc)
+</Step>
+
+<Step title="Argument vector pointer">
+  Registers 1R, 2R, 3R contain a 12-bit pointer to argv
+</Step>
+
+<Step title="Argument array">
+  Each argument is represented by 6 nibbles:
+  - 3 nibbles: start address
+  - 3 nibbles: end address
+</Step>
+
+<Step title="Argument strings">
+  Each character is stored as 2 nibbles (8 bits) in memory
+</Step>
+
+</Steps>
+
+The debugger iterates through all arguments and reconstructs the strings from memory.
+
+<Tip>
+The `args` command is specific to programs that follow the Intel 4004 Toolkit calling convention for storing command-line arguments.
+</Tip>
+
+## Protocol
+
+The debugger communicates with the emulator using a simple text protocol over TCP:
+
+<CodeGroup>
+
+```text Debugger → Emulator
+s
+p
+m 0 0 0
+args
+```
+
+```text Emulator → Debugger
+LDM 5
+2
+0R=5 1R=10 ...
+15
+hello world
+```
+
+</CodeGroup>
+
+All commands and responses are terminated with newline characters (`\n`).
+
+### Maximum command size
+
+Commands are limited to 1024 bytes:
+
+```zig
+pub const MAX_CMD_SIZE = 1024;
+```
+
+## Command history
+
+The debugger tracks the last executed command. Pressing Enter without typing a command repeats the last command.
+
+```
+> s
+instr: LDM 5
+pc: 2
+>           ← Just press Enter
+instr: XCH 0R
+pc: 4
+```
+
+<Note>
+If no commands have been run yet, pressing Enter displays: "no commands have been run yet"
+</Note>
+
+## Error handling
+
+Invalid commands display an error message:
+
+```
+> invalid
+invalid command
+```
+
+The debugger validates:
+- Command name matches known commands
+- Required arguments are provided
+- Numeric arguments can be parsed
+
+## Disassembly
+
+The step command returns disassembled instructions, making it easy to follow program execution:
+
+```
+> s
+instr: FIM 0P 255
+pc: 4
+> s
+instr: JUN START
+pc: 6
+```
+
+Disassembly includes:
+- Instruction mnemonic
+- Arguments in appropriate format (registers as `nR`, pairs as `nP`, addresses as decimal)
+
+## Workflow example
+
+Typical debugging session:
+
+<Steps>
+
+<Step title="Start emulator in debug mode">
+  ```bash
+  ./emulator program.bin
+  # waiting for debugger to connect...
+  ```
+</Step>
+
+<Step title="Connect debugger">
+  ```bash
+  ./debugger
+  # debugger connected
+  ```
+</Step>
+
+<Step title="Set breakpoints">
+  ```
+  > b 100
+  > b 256
+  ```
+</Step>
+
+<Step title="Run to first breakpoint">
+  ```
+  > r
+  reached breakpoint
+  instr: LDM 10
+  pc: 100
+  ```
+</Step>
+
+<Step title="Inspect state">
+  ```
+  > p
+  0R=5 1R=0 2R=0 ...
+  > m 0 0 0
+  15
+  ```
+</Step>
+
+<Step title="Step through code">
+  ```
+  > s
+  > s
+  > s
+  ```
+</Step>
+
+</Steps>
+
+<Warning>
+The debugger does not support instruction disassembly modification or memory writing. It is read-only for inspection purposes.
+</Warning>

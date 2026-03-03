@@ -1,0 +1,492 @@
+---
+title: Instructions
+description: Complete instruction set reference for the Intel 4004 processor
+---
+
+## Instruction format
+
+Instructions can be 1 byte (8 bits) or 2 bytes (16 bits) depending on the instruction type. Arguments can be:
+
+- **Register** (`r`) - 4-bit register index (0R-15R)
+- **Register pair** (`p`) - 3-bit register pair index (0P-7P)
+- **Number** (`n`) - 4-bit immediate value
+- **Address** (`a`) - 12-bit address for jumps
+- **Condition** (`c`) - 4-bit condition code
+
+## Accumulator operations
+
+### Load and exchange
+
+<AccordionGroup>
+  <Accordion title="LDM - Load immediate to accumulator">
+    **Syntax:** `LDM n`
+    
+    Loads a 4-bit immediate value into the accumulator.
+    
+    ```asm
+    LDM 5      / Load 5 into accumulator
+    LDM 1111B  / Load binary 1111 (15) into accumulator
+    ```
+  </Accordion>
+
+  <Accordion title="LD - Load register to accumulator">
+    **Syntax:** `LD r`
+    
+    Loads the value from a register into the accumulator.
+    
+    ```asm
+    LD 0R   / Load register 0 into accumulator
+    LD 15R  / Load register 15 into accumulator
+    ```
+  </Accordion>
+
+  <Accordion title="XCH - Exchange accumulator and register">
+    **Syntax:** `XCH r`
+    
+    Swaps the values of the accumulator and a register.
+    
+    ```asm
+    XCH 0R   / Swap accumulator with register 0
+    XCH 8R   / Swap accumulator with register 8
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Arithmetic
+
+<AccordionGroup>
+  <Accordion title="ADD - Add register to accumulator">
+    **Syntax:** `ADD r`
+    
+    Adds a register to the accumulator with carry. Sets carry flag on overflow.
+    
+    ```asm
+    ADD 0R   / Add register 0 to accumulator
+    ADD 1R   / Add register 1 to accumulator (with carry from previous)
+    ```
+  </Accordion>
+
+  <Accordion title="SUB - Subtract register from accumulator">
+    **Syntax:** `SUB r`
+    
+    Subtracts a register from the accumulator with borrow. Sets carry flag.
+    
+    ```asm
+    SUB 0R   / Subtract register 0 from accumulator
+    SUB 1R   / Subtract with borrow
+    ```
+  </Accordion>
+
+  <Accordion title="INC - Increment register">
+    **Syntax:** `INC r`
+    
+    Increments a register by 1 (wraps on overflow).
+    
+    ```asm
+    INC 0R   / Increment register 0
+    INC 7R   / Increment register 7
+    ```
+  </Accordion>
+
+  <Accordion title="IAC - Increment accumulator">
+    **Syntax:** `IAC`
+    
+    Increments the accumulator by 1 (wraps on overflow).
+    
+    ```asm
+    IAC   / Accumulator = accumulator + 1
+    ```
+  </Accordion>
+
+  <Accordion title="DAC - Decrement accumulator">
+    **Syntax:** `DAC`
+    
+    Decrements the accumulator by 1 (wraps on underflow).
+    
+    ```asm
+    DAC   / Accumulator = accumulator - 1
+    ```
+  </Accordion>
+
+  <Accordion title="DAA - Decimal adjust accumulator">
+    **Syntax:** `DAA`
+    
+    Adjusts accumulator for BCD arithmetic. Adds 6 if accumulator > 9 or carry is set.
+    
+    ```asm
+    ADD 0R
+    DAA     / Adjust for BCD addition
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Logical
+
+<AccordionGroup>
+  <Accordion title="CMA - Complement accumulator">
+    **Syntax:** `CMA`
+    
+    Inverts all bits in the accumulator (ones' complement).
+    
+    ```asm
+    CMA   / Accumulator = ~accumulator
+    ```
+  </Accordion>
+
+  <Accordion title="CLB - Clear both">
+    **Syntax:** `CLB`
+    
+    Clears both the accumulator and carry flag to 0.
+    
+    ```asm
+    CLB   / Accumulator = 0, Carry = 0
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Rotate
+
+<AccordionGroup>
+  <Accordion title="RAL - Rotate accumulator left">
+    **Syntax:** `RAL`
+    
+    Rotates accumulator left through carry. Carry becomes bit 0, bit 3 becomes carry.
+    
+    ```asm
+    RAL   / Rotate left through carry
+    ```
+  </Accordion>
+
+  <Accordion title="RAR - Rotate accumulator right">
+    **Syntax:** `RAR`
+    
+    Rotates accumulator right through carry. Carry becomes bit 3, bit 0 becomes carry.
+    
+    ```asm
+    RAR   / Rotate right through carry
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Register pair operations
+
+<AccordionGroup>
+  <Accordion title="FIM - Fetch immediate to register pair">
+    **Syntax:** `FIM p n`
+    
+    Loads an 8-bit immediate value into a register pair (2 bytes).
+    
+    ```asm
+    FIM 0P 42    / Load 42 into register pair 0 (0R and 1R)
+    FIM 3P 255   / Load 255 into register pair 3 (6R and 7R)
+    FIM 0P 'A'   / Load ASCII 'A' into register pair 0
+    ```
+  </Accordion>
+
+  <Accordion title="FIN - Fetch indirect">
+    **Syntax:** `FIN p`
+    
+    Fetches value from program memory using register pair 0 as index.
+    
+    ```asm
+    FIN 1P   / Fetch from (PC & 0xF00) | value_at(0P) into 1P
+    ```
+  </Accordion>
+
+  <Accordion title="SRC - Send register control">
+    **Syntax:** `SRC p`
+    
+    Sends a register pair as the address for subsequent memory operations.
+    
+    ```asm
+    SRC 0P   / Use register pair 0 as memory address
+    RDM      / Read from that address
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Jump and call instructions
+
+<AccordionGroup>
+  <Accordion title="JUN - Jump unconditional">
+    **Syntax:** `JUN a`
+    
+    Unconditional jump to a 12-bit address (2 bytes).
+    
+    ```asm
+    JUN START     / Jump to START label
+    JUN 0x100     / Jump to address 256
+    ```
+  </Accordion>
+
+  <Accordion title="JCN - Jump conditional">
+    **Syntax:** `JCN c a`
+    
+    Conditional jump to an 8-bit address within the current page (2 bytes).
+    
+    ```asm
+    JCN Z? LABEL    / Jump if accumulator is zero
+    JCN NZ? LABEL   / Jump if accumulator is not zero
+    JCN C? LABEL    / Jump if carry is set
+    JCN NC? LABEL   / Jump if carry is clear
+    ```
+    
+    <Warning>
+    JCN can only jump within the current 256-byte page. For cross-page jumps, use the LJCN macro.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="JIN - Jump indirect">
+    **Syntax:** `JIN p`
+    
+    Jump to address formed by current page and register pair value.
+    
+    ```asm
+    JIN 0P   / Jump to (PC & 0xF00) | value_at(0P)
+    ```
+  </Accordion>
+
+  <Accordion title="JMS - Jump to subroutine">
+    **Syntax:** `JMS a`
+    
+    Pushes return address to stack and jumps to a 12-bit address (2 bytes).
+    
+    ```asm
+    JMS SUBROUTINE   / Call subroutine
+    JMS 0x200        / Call at address 512
+    ```
+  </Accordion>
+
+  <Accordion title="BBL - Branch back and load">
+    **Syntax:** `BBL n`
+    
+    Returns from subroutine and loads immediate value into accumulator.
+    
+    ```asm
+    BBL 0     / Return with accumulator = 0
+    BBL 5     / Return with accumulator = 5
+    ```
+  </Accordion>
+
+  <Accordion title="ISZ - Increment and skip if zero">
+    **Syntax:** `ISZ r a`
+    
+    Increments a register and jumps if result is NOT zero (2 bytes).
+    
+    ```asm
+    ISZ 0R LOOP   / Increment 0R, jump to LOOP if not zero
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Memory operations
+
+### Data RAM
+
+<AccordionGroup>
+  <Accordion title="WRM - Write data RAM">
+    **Syntax:** `WRM`
+    
+    Writes accumulator to data RAM at address set by SRC.
+    
+    ```asm
+    SRC 0P   / Set address
+    WRM      / Write accumulator to data RAM
+    ```
+  </Accordion>
+
+  <Accordion title="RDM - Read data RAM">
+    **Syntax:** `RDM`
+    
+    Reads data RAM at address set by SRC into accumulator.
+    
+    ```asm
+    SRC 0P   / Set address
+    RDM      / Read from data RAM to accumulator
+    ```
+  </Accordion>
+
+  <Accordion title="ADM - Add from memory">
+    **Syntax:** `ADM`
+    
+    Adds data RAM value at SRC address to accumulator with carry.
+    
+    ```asm
+    SRC 0P
+    ADM      / Add memory value to accumulator
+    ```
+  </Accordion>
+
+  <Accordion title="SBM - Subtract from memory">
+    **Syntax:** `SBM`
+    
+    Subtracts data RAM value at SRC address from accumulator with borrow.
+    
+    ```asm
+    SRC 0P
+    SBM      / Subtract memory value from accumulator
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Status RAM
+
+<AccordionGroup>
+  <Accordion title="WR0, WR1, WR2, WR3 - Write status character">
+    **Syntax:** `WR0` | `WR1` | `WR2` | `WR3`
+    
+    Writes accumulator to status character 0-3 at address set by SRC.
+    
+    ```asm
+    SRC 0P
+    WR0      / Write to status character 0
+    ```
+  </Accordion>
+
+  <Accordion title="RD0, RD1, RD2, RD3 - Read status character">
+    **Syntax:** `RD0` | `RD1` | `RD2` | `RD3`
+    
+    Reads status character 0-3 at address set by SRC into accumulator.
+    
+    ```asm
+    SRC 0P
+    RD0      / Read status character 0
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## I/O operations
+
+<AccordionGroup>
+  <Accordion title="WRR - Write ROM port">
+    **Syntax:** `WRR`
+    
+    Writes accumulator to ROM port specified by SRC address.
+    
+    ```asm
+    SRC 0P
+    WRR      / Write to ROM port
+    ```
+  </Accordion>
+
+  <Accordion title="RDR - Read ROM port">
+    **Syntax:** `RDR`
+    
+    Reads from ROM port specified by SRC address into accumulator.
+    
+    ```asm
+    SRC 0P
+    RDR      / Read from ROM port
+    ```
+  </Accordion>
+
+  <Accordion title="WMP - Write RAM port">
+    **Syntax:** `WMP`
+    
+    Writes accumulator to RAM port.
+    
+    ```asm
+    WMP      / Write to RAM port
+    ```
+  </Accordion>
+
+  <Accordion title="WPM - Write program RAM">
+    **Syntax:** `WPM`
+    
+    Writes to program RAM (for self-modifying code).
+    
+    ```asm
+    WPM      / Write to program RAM
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Carry operations
+
+<AccordionGroup>
+  <Accordion title="CLC - Clear carry">
+    **Syntax:** `CLC`
+    
+    Clears the carry flag to 0.
+    
+    ```asm
+    CLC      / Carry = 0
+    ADD 0R   / Add without previous carry
+    ```
+  </Accordion>
+
+  <Accordion title="STC - Set carry">
+    **Syntax:** `STC`
+    
+    Sets the carry flag to 1.
+    
+    ```asm
+    STC      / Carry = 1
+    ```
+  </Accordion>
+
+  <Accordion title="CMC - Complement carry">
+    **Syntax:** `CMC`
+    
+    Inverts the carry flag.
+    
+    ```asm
+    CMC      / Carry = ~Carry
+    ```
+  </Accordion>
+
+  <Accordion title="TCC - Transmit carry and clear">
+    **Syntax:** `TCC`
+    
+    Copies carry flag to accumulator and clears carry.
+    
+    ```asm
+    TCC      / Accumulator = Carry, Carry = 0
+    ```
+  </Accordion>
+
+  <Accordion title="TCS - Transmit carry subtract">
+    **Syntax:** `TCS`
+    
+    Sets accumulator to 9 if carry=0, or 10 if carry=1, then clears carry.
+    
+    ```asm
+    TCS      / Accumulator = carry ? 10 : 9, Carry = 0
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Special operations
+
+<AccordionGroup>
+  <Accordion title="NOP - No operation">
+    **Syntax:** `NOP`
+    
+    Does nothing. Used for timing or padding.
+    
+    ```asm
+    NOP      / No operation
+    ```
+  </Accordion>
+
+  <Accordion title="KBP - Keyboard process">
+    **Syntax:** `KBP`
+    
+    Converts accumulator to bit position (0001→1, 0010→2, 0100→3, 1000→4, else→15).
+    
+    ```asm
+    KBP      / Convert bit to position
+    ```
+  </Accordion>
+
+  <Accordion title="DCL - Designate command line">
+    **Syntax:** `DCL`
+    
+    Selects RAM bank based on lower 3 bits of accumulator.
+    
+    ```asm
+    LDM 1
+    DCL      / Select RAM bank 1
+    ```
+  </Accordion>
+</AccordionGroup>

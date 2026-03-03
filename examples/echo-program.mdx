@@ -1,0 +1,349 @@
+---
+title: Echo program
+description: Understanding the interactive shell program with keyboard and monitor I/O
+---
+
+The echo program in `main.4004` demonstrates a complete interactive system that reads commands from a virtual keyboard, parses them, and executes built-in commands like `echo`.
+
+## Overview
+
+This program implements a simple command-line shell with the following features:
+- Interactive prompt (`$ `)
+- Keyboard input with backspace support
+- Command parsing and argument handling
+- Built-in `echo` command
+- Memory allocation for command buffers
+
+## Running the program
+
+<Steps>
+  <Step title="Build the project">
+    ```bash
+    zig build
+    ```
+  </Step>
+
+  <Step title="Assemble main.4004">
+    ```bash
+    zig-out/bin/4004-assembler 4004-asm/main.4004 4004-asm/main.4004out
+    ```
+  </Step>
+
+  <Step title="Run the emulator">
+    ```bash
+    zig-out/bin/4004-emulator 4004-asm/main.4004out
+    ```
+
+    You'll see the `$ ` prompt. Type `echo hello world` and press enter to see the output.
+  </Step>
+</Steps>
+
+## Program architecture
+
+### Initialization
+
+The program starts by setting up the runtime environment:
+
+```asm
+/ Set the stack counter to 0
+FIM 7P 0
+
+/ Initialize malloc
+#CALL INIT_END_PTR
+
+/ Allocate 128 nibbles (64 characters) for the command on the heap
+128 -> 0R 1R 2R
+#CALL MALLOC
+0R 1R 2R -> 3R 4R 5R
+```
+
+<Info>
+The program allocates 128 nibbles (64 bytes) to store the command buffer. Since each character requires 8 bits (2 nibbles), this allows for 64-character commands.
+</Info>
+
+### Displaying the prompt
+
+After initialization, the program displays the prompt:
+
+```asm
+/ Write "$ " to the monitor
+FIM 0P '$'
+#CALL PRINT_CHAR
+FIM 0P ' '
+#CALL PRINT_CHAR
+```
+
+### Keyboard polling loop
+
+The main loop continuously polls the keyboard for input:
+
+```asm
+POLL_KB,
+    #CALL READ_CHAR
+    / Save 0P (the received character) in 6P
+    0P -> 6P
+    / Check if the character is DEL
+    FIM 1P '\d'
+    #CALL CMP_8
+    LD 0R
+    #LJCN NZ? DELETE
+    / Write the character to the monitor
+    6P -> 0P
+    #CALL PRINT_CHAR
+```
+
+This loop:
+1. Reads a character from the keyboard
+2. Checks if it's a delete/backspace character
+3. Echoes the character to the monitor
+4. Checks if it's an enter key
+
+### Character storage
+
+When a regular character is received, it's stored in memory:
+
+```asm
+/ Write the character to memory
+    / First nibble
+    LD 0R
+    DCL
+    SRC 1P
+    LD 12R
+    WRM
+    / Increment the cached command-end pointer
+    0R 1P += 1
+    / Second nibble
+    LD 0R
+    DCL
+    SRC 1P
+    LD 13R
+    WRM
+    / Increment the cached command-end pointer
+    0R 1P += 1
+```
+
+Each character requires two memory writes (one for each nibble), and the command-end pointer is incremented by 2 nibbles per character.
+
+### Command execution
+
+When the enter key is pressed, the program:
+
+1. Parses the command to extract argc and argv
+2. Finds the first space to separate command name from arguments
+3. Looks up the command code
+4. Executes the matching command (currently only `echo`)
+
+```asm
+/ Call GET_CMD_CODE
+    / Load cmd_start into 6R-8R
+    FIM 0P CMD_START_STACK_OFFSET
+    JMS STACK_BOTTOM_PEEK_12
+    0R 1R 2R -> 6R 7R 8R
+    / Load first_space into 3R-5R
+    FIM 0P 3
+    JMS STACK_TOP_PEEK_4
+    0R -> 3R
+    / ... (additional setup)
+    / Get the command code; if it's 0, the command wasn't recognized
+    #CALL GET_CMD_CODE
+    LD 0R
+    #LJCN Z? NOT_FOUND
+```
+
+### The echo command
+
+The `ECHO` function prints the arguments after the command name:
+
+```asm
+/ ECHO(first_space: 12, cmd_end: 12) - Print the argument
+ECHO,
+    / If first_space==cmd_end (i.e. if there are no arguments), then return
+    CLC
+    LD 0R
+    SUB 3R
+    #LJCN NZ? ECHO.PRINT_ARG
+    CLC
+    LD 1R
+    SUB 4R
+    #LJCN NZ? ECHO.PRINT_ARG
+    CLC
+    LD 2R
+    SUB 5R
+    #LJCN NZ? ECHO.PRINT_ARG
+    JUN ECHO.WRAP_UP
+
+    ECHO.PRINT_ARG,
+    / Otherwise, call PRINT_STR with first_space+2 to skip the first space
+    0R 1R 2R += 2
+    #CALL PRINT_STR
+
+    ECHO.WRAP_UP,
+    FIM 0P '\n'
+    #CALL PRINT_CHAR
+    JUN RETURN
+```
+
+The function compares the first space position with the command end position. If they're equal, there are no arguments. Otherwise, it prints the string starting 2 nibbles (1 character) after the first space to skip the space itself.
+
+## Device I/O
+
+### Keyboard interface
+
+The keyboard device uses three I/O ports:
+
+```asm
+KEYBOARD_CHAR_PORT_1 = 0
+KEYBOARD_CHAR_PORT_2 = 1
+KEYBOARD_CHAR_READY_PORT = 2
+```
+
+The `READ_CHAR` function polls port 2 until it reads a non-zero value, then reads the character from ports 0 and 1:
+
+```asm
+READ_CHAR,
+    / Wait for the keyboard to signal it's ready
+    WAIT_FOR_CHAR,
+        / Read the keyboard's char ready port
+        KEYBOARD_CHAR_READY_PORT -> 2R
+        SRC 1P
+        RDR
+        / If it's 0, then keep looping
+        #LJCN Z? WAIT_FOR_CHAR
+
+    / Get the character sent by the keyboard
+    KEYBOARD_CHAR_PORT_1 -> 2R
+    SRC 1P
+    RDR
+    XCH 0R
+    KEYBOARD_CHAR_PORT_2 -> 2R
+    SRC 1P
+    RDR
+    XCH 1R
+```
+
+### Monitor interface
+
+The monitor uses three I/O ports:
+
+```asm
+MONITOR_CHAR_PORT_1 = 3
+MONITOR_CHAR_PORT_2 = 4
+MONITOR_CHAR_READY_PORT = 5
+```
+
+The `PRINT_CHAR` function waits for the monitor to be ready (port 5 = 0), then writes the character and sets the ready flag:
+
+```asm
+PRINT_CHAR,
+    / Wait for the monitor to signal it's ready
+    WAIT_FOR_MONITOR,
+        / Read the monitor's char ready port
+        MONITOR_CHAR_READY_PORT -> 2R
+        SRC 1P
+        RDR
+        / If it's not 0, then keep looping
+        #LJCN NZ? WAIT_FOR_MONITOR
+
+    / Set the character lines
+    MONITOR_CHAR_PORT_1 -> 2R
+    SRC 1P
+    LD 0R
+    WRR
+    MONITOR_CHAR_PORT_2 -> 2R
+    SRC 1P
+    LD 1R
+    WRR
+
+    / Set the char ready port
+    MONITOR_CHAR_READY_PORT -> 2R
+    SRC 1P
+    LDM 1
+    WRR
+```
+
+<Note>
+The keyboard's ready port uses 0 = not ready, 1 = ready, while the monitor's ready port uses 0 = ready, 1 = busy. This difference is important when implementing I/O operations.
+</Note>
+
+## Memory management
+
+The program includes a simple `MALLOC` function for dynamic memory allocation:
+
+```asm
+/ MALLOC(nibs: 12) -> addr: 12 - Allocate that many nibbles of memory
+MALLOC,
+    / Put the argument into 3R-5R
+    0R 1R 2R -> 3R 4R 5R
+    / Put the end pointer into 0R-2R
+    LDM EPB
+    DCL
+    FIM 3P EPA
+    SRC 3P
+    RDM
+    XCH 0R
+    / ... (reads end pointer from memory)
+    / Add argument to end pointer, store result in 3R-5R
+    3R 4R 5R += 0R 1R 2R
+    / Crash if there's an overflow
+    #LJCN C? MALLOC_OVERFLOW
+```
+
+The allocator maintains an end pointer that tracks the next available memory location. Each allocation moves this pointer forward and returns the old pointer value.
+
+## Calling convention
+
+The program uses a consistent calling convention documented at the top of the file:
+
+```asm
+/ CALLING CONVENTION:
+/ Functions accept arguments from, and return to, 0-7R.
+/ Functions must leave 10R-13R untouched, but can mess with 0-9R.
+/ 14R-15R is the stack counter.
+```
+
+This convention ensures that functions can call each other without corrupting important data.
+
+<Tip>
+When writing your own functions, follow the calling convention to ensure compatibility with existing code. Preserve registers 10R-13R to avoid breaking caller state.
+</Tip>
+
+## Error handling
+
+The program includes error handlers for common failures:
+
+```asm
+STACK_OVERFLOW,
+    0 -> 7P
+    FIM 0P 'S'
+    #CALL PRINT_CHAR
+    FIM 0P 'O'
+    #CALL PRINT_CHAR
+    FIM 0P 'F'
+    #CALL PRINT_CHAR
+    JUN FREEZE
+
+MALLOC_OVERFLOW,
+    0 -> 7P
+    FIM 0P 'M'
+    #CALL PRINT_CHAR
+    FIM 0P 'O'
+    #CALL PRINT_CHAR
+    FIM 0P 'F'
+    #CALL PRINT_CHAR
+    JUN FREEZE
+
+FREEZE, JUN FREEZE
+```
+
+When an error occurs, the program prints a short error code (`SOF` for stack overflow, `MOF` for malloc overflow, `SUF` for stack underflow) and halts.
+
+## Next steps
+
+This program demonstrates many advanced techniques for Intel 4004 programming. You can extend it by:
+
+- Adding new built-in commands
+- Implementing additional string manipulation functions
+- Creating a more sophisticated command parser
+- Adding support for numeric arguments
+
+The complete source code is available in `4004-asm/main.4004`.

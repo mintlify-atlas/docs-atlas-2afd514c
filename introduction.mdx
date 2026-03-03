@@ -1,0 +1,71 @@
+---
+title: Introduction
+description: A modern toolkit for Intel 4004 development with assembler and emulator
+---
+
+<Note>
+This project is under active development. Feel free to try it out and provide feedback!
+</Note>
+
+## What is the Intel 4004?
+
+The Intel 4004 was the world's first commercially available microprocessor, released in 1971. It was a 4-bit CPU designed for calculators, featuring a unique architecture with 16 4-bit registers, a 12-bit program counter, and a 3-level stack.
+
+## What is the Intel 4004 Toolkit?
+
+The Intel 4004 Toolkit is a comprehensive set of development tools for writing and running Intel 4004 programs. It provides modern conveniences while staying true to the original 4004 architecture.
+
+<CardGroup cols={2}>
+  <Card title="Modern assembler" icon="code">
+    Enhanced assembly language with convenience features beyond standard Intel 4004 assembly
+  </Card>
+  
+  <Card title="Full emulator" icon="microchip">
+    Cycle-accurate emulation of the Intel 4004 CPU with virtual keyboard and monitor
+  </Card>
+  
+  <Card title="Example programs" icon="file-code">
+    Includes a working shell program demonstrating keyboard input, memory management, and command parsing
+  </Card>
+  
+  <Card title="Written in Zig" icon="bolt">
+    Built with modern Zig for performance, safety, and easy cross-platform compilation
+  </Card>
+</CardGroup>
+
+## Assembler features
+
+The assembler includes several convenience features that make Intel 4004 development more productive:
+
+- **Arrow syntax**: Move data between registers with intuitive syntax like `0R -> 1R`
+- **Arithmetic operators**: Use `+=` and `-=` for register manipulation
+- **Macros**: Built-in `#CALL` and `#LJCN` macros for common patterns
+- **Character literals**: Write `'A'` instead of calculating ASCII values
+- **Labels and equates**: Named addresses and constants for readable code
+- **Binary literals**: Express bit patterns as `0100B`
+
+## Emulator capabilities
+
+The emulator provides:
+
+- Full Intel 4004 CPU emulation including all 46 instructions
+- Data RAM (DRAM) with proper bank and chip addressing
+- Program ROM (PRAM) for executable code
+- Virtual keyboard and monitor devices
+- I/O port simulation
+- Multi-threaded execution for responsive I/O
+
+## Example program
+
+The toolkit includes `main.4004`, a work-in-progress shell program that demonstrates:
+
+- Keyboard input handling
+- Virtual monitor output
+- Memory allocation system
+- Command parsing (currently supports `echo`)
+- Stack operations
+- String manipulation
+
+## Get started
+
+Ready to start developing for the Intel 4004? Continue to the [installation guide](/installation) to build the toolkit.

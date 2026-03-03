@@ -1,0 +1,153 @@
+---
+title: CPU architecture
+description: Intel 4004 processor implementation and execution model
+---
+
+The Intel 4004 CPU is implemented in the `Intel4004` struct, which emulates the original 4-bit microprocessor with cycle-accurate timing.
+
+## Intel4004 struct
+
+The main CPU struct is defined in `cpu.zig:6` and contains all processor state:
+
+```zig
+pub const Intel4004 = struct {
+    index_registers: [16]u4,
+    program_counter: u12,
+    accumulator: u4,
+    carry_bit: u1,
+    test_signal: u1,
+    stack_registers: [3]u12,
+    stack_pointer: u2,
+    src_address: u8,
+    dram: DataRAM,
+    pram: ProgramRAM,
+    rom: ROM,
+}
+```
+
+## Registers
+
+The Intel 4004 has several types of registers for different purposes:
+
+<Tabs>
+  <Tab title="Index registers">
+    ### Index registers
+    
+    **Field:** `index_registers: [16]u4`
+    
+    The CPU has 16 index registers, each storing a 4-bit value. These general-purpose registers can be accessed individually or as pairs for 8-bit operations.
+    
+    <Info>
+    Register pairs are accessed using the `getRegisterPair()` and `setRegisterPair()` methods, which combine two consecutive 4-bit registers into an 8-bit value.
+    </Info>
+  </Tab>
+  
+  <Tab title="Accumulator">
+    ### Accumulator
+    
+    **Field:** `accumulator: u4`
+    
+    The 4-bit accumulator is the primary register for arithmetic and logical operations. Most instructions operate on the accumulator and store results back to it.
+  </Tab>
+  
+  <Tab title="Carry bit">
+    ### Carry bit
+    
+    **Field:** `carry_bit: u1`
+    
+    A single-bit flag that indicates arithmetic overflow or is used for multi-precision arithmetic operations.
+  </Tab>
+  
+  <Tab title="Test signal">
+    ### Test signal
+    
+    **Field:** `test_signal: u1`
+    
+    A single-bit input signal used for conditional branching based on external conditions.
+  </Tab>
+</Tabs>
+
+## Program counter
+
+**Field:** `program_counter: u12`
+
+The 12-bit program counter points to the next instruction to execute in program memory. It can address up to 4096 bytes of program RAM, with automatic wraparound using modulo arithmetic (`cpu.zig:67`).
+
+## Stack
+
+The Intel 4004 has a limited hardware stack for subroutine calls:
+
+- **stack_registers:** `[3]u12` - Three 12-bit registers storing return addresses
+- **stack_pointer:** `u2` - 2-bit pointer (0-2) tracking the current stack position
+
+<Note>
+The stack is circular with only 3 levels. Pushing beyond level 2 wraps back to level 0, overwriting the oldest return address. This matches the original Intel 4004 hardware limitation.
+</Note>
+
+### Stack operations
+
+<Accordion title="pushToStack(address: u12)">
+Pushes a 12-bit address onto the stack and increments the stack pointer. Defined in `cpu.zig:19-22`.
+
+```zig
+pub fn pushToStack(self: *Intel4004, address: u12) void {
+    self.stack_registers[self.stack_pointer] = address;
+    self.stack_pointer = if (self.stack_pointer < 2) self.stack_pointer + 1 else 0;
+}
+```
+</Accordion>
+
+<Accordion title="popFromStack() u12">
+Decrements the stack pointer and returns the address at that position. Defined in `cpu.zig:24-27`.
+
+```zig
+pub fn popFromStack(self: *Intel4004) u12 {
+    self.stack_pointer = if (self.stack_pointer > 0) self.stack_pointer - 1 else 2;
+    return self.stack_registers[self.stack_pointer];
+}
+```
+</Accordion>
+
+## Execution model
+
+The CPU executes instructions using a single-step model with cycle-accurate timing:
+
+### single_step()
+
+Defined in `cpu.zig:60-87`, this method:
+
+1. Fetches the instruction byte from program RAM at the current program counter
+2. Decodes the instruction using the instruction specification
+3. Fetches a second byte if the instruction is 2 bytes long
+4. Advances the program counter by the instruction length
+5. Extracts instruction arguments from the opcode bytes
+6. Executes the instruction function with the extracted arguments
+7. Waits to match the expected cycle timing based on a 740 kHz clock speed
+
+<Info>
+The emulator runs at the original Intel 4004 clock speed of 740 kHz, with timing enforcement through busy-waiting to ensure cycle-accurate execution.
+</Info>
+
+### Clock timing
+
+- **Clock speed:** 740,000 Hz (`cpu.zig:57`)
+- **Cycle time:** ~1,351 nanoseconds per cycle
+- Instructions take 1 or 2 cycles depending on their byte length
+
+## Helper methods
+
+<Accordion title="getRegisterPair(pair: u3) u8">
+Combines two consecutive index registers into an 8-bit value. Defined in `cpu.zig:29-33`.
+
+The pair index (0-7) is multiplied by 2 to get the first register, and the adjacent register forms the lower 4 bits.
+</Accordion>
+
+<Accordion title="setRegisterPair(pair: u3, val: u8)">
+Splits an 8-bit value across two consecutive index registers. Defined in `cpu.zig:35-38`.
+
+The upper 4 bits go to the even-numbered register, and the lower 4 bits go to the odd-numbered register.
+</Accordion>
+
+<Accordion title="reset()">
+Resets all CPU state to zero. Defined in `cpu.zig:40-42`.
+</Accordion>

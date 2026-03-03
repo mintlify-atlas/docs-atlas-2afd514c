@@ -1,0 +1,158 @@
+---
+title: Memory architecture
+description: Data RAM, program RAM, and ROM organization in the Intel 4004 system
+---
+
+The Intel 4004 system uses three distinct memory types: data RAM for variable storage, program RAM for executable code, and ROM for read-only storage and I/O ports.
+
+## DataRAM
+
+**Field:** `dram: DataRAM`
+
+The Data RAM structure emulates the Intel 4002 RAM chips, which provide both data storage and I/O ports. Defined in `cpu.zig:44-50`.
+
+```zig
+pub const DataRAM = struct {
+    pub const Register = struct { data: [16]u4, status: [4]u4 };
+    pub const Bank = struct { chips: [4][4]Register, ports: [4]u4 };
+    banks: [8]Bank,
+    ports: [4]u4,
+    selected_bank: u3,
+};
+```
+
+### Memory organization
+
+The Data RAM is organized in a hierarchical structure:
+
+<Tabs>
+  <Tab title="Registers">
+    ### Registers
+    
+    The basic storage unit containing:
+    
+    - **data:** `[16]u4` - 16 4-bit data storage locations
+    - **status:** `[4]u4` - 4 4-bit status characters
+    
+    Each register provides 16 data nibbles and 4 status nibbles, totaling 20 4-bit values.
+  </Tab>
+  
+  <Tab title="Chips">
+    ### Chips
+    
+    Each bank contains `[4][4]Register`:
+    
+    - 4 chips per bank
+    - 4 registers per chip
+    - Each chip also has 4 I/O ports: `ports: [4]u4`
+    
+    This matches the physical organization of Intel 4002 RAM chips.
+  </Tab>
+  
+  <Tab title="Banks">
+    ### Banks
+    
+    The top level contains:
+    
+    - **banks:** `[8]Bank` - 8 banks of RAM
+    - **ports:** `[4]u4` - 4 global I/O ports
+    - **selected_bank:** `u3` - Currently selected bank (0-7)
+    
+    Only one bank can be selected at a time for operations.
+  </Tab>
+</Tabs>
+
+### Capacity calculation
+
+<Note>
+Total Data RAM capacity:
+- 8 banks × 4 chips × 4 registers × 16 nibbles = 2,048 data nibbles (1,024 bytes)
+- 8 banks × 4 chips × 4 registers × 4 status nibbles = 512 status nibbles (256 bytes)
+</Note>
+
+### I/O ports
+
+Data RAM includes integrated I/O ports at multiple levels:
+
+- **Chip-level ports:** Each chip has 4 4-bit ports for device communication
+- **Global ports:** 4 additional ports at the top level
+
+These ports enable communication with external devices like keyboards and displays.
+
+## ProgramRAM
+
+**Field:** `pram: ProgramRAM`
+
+Program RAM stores executable instructions and is where the CPU fetches opcodes. Defined in `cpu.zig:51`.
+
+```zig
+pub const ProgramRAM = struct { 
+    bytes: [4096]u8, 
+    wpm_half_byte: u1 
+};
+```
+
+### Structure
+
+- **bytes:** `[4096]u8` - 4 KB of program memory
+- **wpm_half_byte:** `u1` - Write Program Memory half-byte flag
+
+<Info>
+The 12-bit program counter can address all 4096 bytes, giving the Intel 4004 a maximum program size of 4 KB.
+</Info>
+
+### Write mode
+
+The `wpm_half_byte` flag controls nibble-level writing during program memory operations, allowing precise control when modifying program code.
+
+## ROM
+
+**Field:** `rom: ROM`
+
+Read-only memory provides permanent storage and additional I/O ports. Defined in `cpu.zig:52-55`.
+
+```zig
+pub const ROM = struct {
+    bytes: [4096]u8,
+    ports: [16]u4,
+};
+```
+
+### Structure
+
+- **bytes:** `[4096]u8` - 4 KB of read-only storage
+- **ports:** `[16]u4` - 16 4-bit I/O ports
+
+<Note>
+ROM provides 16 I/O ports, significantly more than Data RAM, making it the primary interface point for external devices in many configurations.
+</Note>
+
+### Use cases
+
+ROM is typically used for:
+
+- Permanent program storage that doesn't need modification
+- I/O device communication through the 16 available ports
+- Lookup tables and constant data
+
+## Memory addressing
+
+The Intel 4004 uses different addressing modes for each memory type:
+
+- **Program counter:** 12-bit addresses for Program RAM and ROM (0-4095)
+- **Data RAM:** Hierarchical addressing through bank selection, chip selection, register selection, and nibble offset
+- **I/O ports:** Direct port number addressing for device communication
+
+## Memory access patterns
+
+<Accordion title="Instruction fetch">
+The CPU reads instructions from Program RAM using the program counter. Each instruction is 1 or 2 bytes, and the program counter auto-increments based on instruction length (`cpu.zig:63-67`).
+</Accordion>
+
+<Accordion title="Data operations">
+Data RAM operations require selecting the appropriate bank (using `selected_bank`), then accessing the specific chip, register, and nibble within that bank.
+</Accordion>
+
+<Accordion title="I/O operations">
+I/O ports in both Data RAM and ROM can be read or written directly by their port numbers, enabling communication with virtual devices.
+</Accordion>

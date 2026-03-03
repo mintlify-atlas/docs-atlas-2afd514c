@@ -1,0 +1,146 @@
+---
+title: Hello world
+description: A simple introduction to Intel 4004 assembly and emulation
+---
+
+This guide walks you through creating your first Intel 4004 program that displays text on the virtual monitor.
+
+## Overview
+
+This example demonstrates the basic workflow for Intel 4004 development:
+1. Writing assembly code
+2. Assembling it into executable format
+3. Running it in the emulator
+
+<Steps>
+  <Step title="Create your assembly file">
+    Create a new file called `hello.4004` with the following code:
+
+    ```asm
+    / Print "HI" to the monitor
+    FIM 0P 'H'
+    #CALL PRINT_CHAR
+    FIM 0P 'I'
+    #CALL PRINT_CHAR
+    FIM 0P '\n'
+    #CALL PRINT_CHAR
+    JUN FREEZE
+
+    / Write character to monitor - PRINT_CHAR(char: 8)
+    PRINT_CHAR,
+        MONITOR_CHAR_PORT_1 = 3
+        MONITOR_CHAR_PORT_2 = 4
+        MONITOR_CHAR_READY_PORT = 5
+        / Wait for the monitor to signal it's ready
+        WAIT_FOR_MONITOR,
+            / Read the monitor's char ready port
+            MONITOR_CHAR_READY_PORT -> 2R
+            SRC 1P
+            RDR
+            / If it's not 0, then keep looping
+            #LJCN NZ? WAIT_FOR_MONITOR
+
+        / Set the character lines
+        MONITOR_CHAR_PORT_1 -> 2R
+        SRC 1P
+        LD 0R
+        WRR
+        MONITOR_CHAR_PORT_2 -> 2R
+        SRC 1P
+        LD 1R
+        WRR
+
+        / Set the char ready port
+        MONITOR_CHAR_READY_PORT -> 2R
+        SRC 1P
+        LDM 1
+        WRR
+
+        JUN RETURN
+
+    RETURN,
+        / Save 0R and 1R to the stack
+        FIM 7P 0
+        JMS PUSH_4
+        1R -> 0R
+        JMS PUSH_4
+        BBL 0
+
+    PUSH_4,
+        LDM 0
+        DCL
+        SRC 7P
+        LD 0R
+        WRM
+        7P += 1
+        BBL 0
+
+    FREEZE, JUN FREEZE
+    ```
+
+    <Note>
+    The `FIM` instruction loads an immediate 8-bit value into a register pair. The `#CALL` macro is a convenience feature that handles function calls.
+    </Note>
+  </Step>
+
+  <Step title="Build the assembler">
+    First, build the toolkit:
+
+    ```bash
+    zig build
+    ```
+
+    This creates the assembler and emulator executables in `zig-out/bin/`.
+  </Step>
+
+  <Step title="Assemble your program">
+    Convert your assembly code into an executable:
+
+    ```bash
+    zig-out/bin/4004-assembler hello.4004 hello.4004out
+    ```
+
+    This reads `hello.4004` and generates `hello.4004out`, which contains the assembled machine code.
+  </Step>
+
+  <Step title="Run in the emulator">
+    Execute your program:
+
+    ```bash
+    zig-out/bin/4004-emulator hello.4004out
+    ```
+
+    You should see `HI` printed to the virtual monitor, followed by a newline.
+  </Step>
+</Steps>
+
+## Understanding the code
+
+The program uses several key concepts:
+
+### Device I/O ports
+
+The virtual monitor uses three I/O ports:
+- Port 3: First 4 bits of character
+- Port 4: Second 4 bits of character
+- Port 5: Ready signal (0 = ready, 1 = busy)
+
+### Register pairs
+
+The Intel 4004 uses 4-bit registers (0R-15R) that can be grouped into pairs (0P-7P). Each pair holds 8 bits, perfect for representing a character.
+
+### Convenience syntax
+
+The assembler provides helpful extensions:
+- `FIM 0P 'H'` - Load ASCII character into register pair
+- `#CALL PRINT_CHAR` - Macro for function calls
+- `7P += 1` - Increment register pair
+- `MONITOR_CHAR_PORT_1 -> 2R` - Named constant assignment
+
+<Tip>
+Use the `/` character to write comments in your assembly code. Comments help document what your code does.
+</Tip>
+
+## Next steps
+
+Now that you understand the basics, check out the [echo program example](/examples/echo-program) to see a more complex program that interacts with both keyboard and monitor devices.

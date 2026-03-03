@@ -1,0 +1,214 @@
+---
+title: Emulator
+description: Run Intel 4004 programs with virtual I/O devices
+---
+
+The emulator executes assembled Intel 4004 binaries with virtual keyboard and monitor devices. It runs programs in real-time with support for concurrent I/O operations.
+
+## Command line usage
+
+The emulator requires a single argument:
+
+```bash
+./emulator <executable_file>
+```
+
+<ParamField path="executable_file" type="string" required>
+  Path to the assembled binary file (4096 bytes)
+</ParamField>
+
+## Terminal mode
+
+The emulator automatically sets the terminal to cbreak mode (character-at-a-time input with no echo). This mode is restored when the emulator exits.
+
+<Note>
+In cbreak mode, input is processed immediately without waiting for Enter, and typed characters are not echoed to the terminal.
+</Note>
+
+## Virtual devices
+
+The emulator provides two virtual I/O devices connected via ROM ports:
+
+### Keyboard device
+
+The virtual keyboard allows programs to read user input.
+
+<Steps>
+
+<Step title="Port configuration">
+  Connected to ROM ports 0-2:
+  - Port 0: Character high nibble
+  - Port 1: Character low nibble
+  - Port 2: Character ready flag
+</Step>
+
+<Step title="Input processing">
+  Characters are read from stdin and queued asynchronously
+</Step>
+
+<Step title="Character delivery">
+  Each keystroke is split into two nibbles and made available to the CPU
+</Step>
+
+</Steps>
+
+The keyboard runs in a separate thread and uses a lock-free queue to prevent blocking the CPU.
+
+### Monitor device
+
+The virtual monitor allows programs to output text.
+
+<Steps>
+
+<Step title="Port configuration">
+  Connected to ROM ports 3-5:
+  - Port 3: Character high nibble
+  - Port 4: Character low nibble
+  - Port 5: Character ready flag
+</Step>
+
+<Step title="Character assembly">
+  The monitor reads two nibbles from ports and combines them into a full byte
+</Step>
+
+<Step title="Display output">
+  Assembled characters are written to stdout
+</Step>
+
+</Steps>
+
+The monitor runs in a separate thread, continuously checking for output from the program.
+
+## Threading architecture
+
+The emulator uses a multi-threaded design:
+
+<CodeGroup>
+
+```text CPU thread
+Executes 4004 instructions continuously
+Reads from keyboard ports
+Writes to monitor ports
+```
+
+```text Monitor thread
+Reads characters from ROM ports 3-5
+Writes to stdout
+```
+
+```text Input thread
+Reads from stdin (blocking)
+Adds characters to queue
+```
+
+```text Queue thread
+Transfers queued characters to keyboard device
+Updates ROM ports 0-2
+```
+
+</CodeGroup>
+
+<Warning>
+All threads run indefinitely. The emulator only stops when the process is killed or encounters an error.
+</Warning>
+
+## CPU execution
+
+The CPU executes instructions continuously via the `single_step()` method:
+
+```zig
+while (true) {
+    try intel4004.single_step();
+}
+```
+
+Each step:
+1. Fetches instruction from program memory
+2. Decodes opcode
+3. Executes operation
+4. Updates program counter
+
+## Memory layout
+
+The emulator initializes an `Intel4004` structure with:
+
+- **PRAM**: 4096 bytes of program memory (loaded from executable file)
+- **DRAM**: 16 banks × 4 chips × 4 registers × 16 nibbles
+- **ROM ports**: 16 ports for I/O operations
+- **Index registers**: 16 registers (4 bits each)
+- **Program counter**: 12-bit address
+
+## Port access synchronization
+
+I/O port access is synchronized using an atomic lock:
+
+<Steps>
+
+<Step title="Acquire lock">
+  Thread attempts compare-and-swap from false to true
+</Step>
+
+<Step title="Spin wait">
+  If lock is held, thread spins with hint for CPU optimization
+</Step>
+
+<Step title="Critical section">
+  Update queue or keyboard state
+</Step>
+
+<Step title="Release lock">
+  Store false to release other threads
+</Step>
+
+</Steps>
+
+This ensures keyboard input is not corrupted by concurrent access.
+
+## Debugger mode
+
+The emulator can be modified to run with debugger support (see debugger.mdx). In debugger mode, the emulator:
+
+1. Listens on TCP port 5005 (127.0.0.1:5005)
+2. Waits for debugger connection
+3. Executes instructions only when commanded
+4. Responds to debugger queries
+
+<Tip>
+To enable debugger mode, replace the `start_cpu()` call with `start_cpu_with_debugger()` and recompile.
+</Tip>
+
+## Error handling
+
+The emulator returns errors for:
+
+- Missing executable file argument
+- File not found or cannot be opened
+- Invalid binary format
+- Thread spawn failures
+
+## Memory nibble access
+
+The emulator provides a helper function to read DRAM nibbles using a 12-bit address:
+
+```zig
+fn get_mem_nibble(intel4004: *Intel4004, n: u12) u4
+```
+
+The address is decomposed into:
+- **Bits 8-11**: Bank number (0-15)
+- **Bits 4-7**: Chip number (0-15) and register (0-3)
+- **Bits 0-3**: Character position (0-15)
+
+This function is used by the debugger to inspect memory contents.
+
+## Runtime behavior
+
+The emulator runs until interrupted:
+
+- Press Ctrl+C to stop execution
+- Terminal settings are restored on exit
+- All threads terminate when main thread exits
+
+<Note>
+The emulator does not implement execution speed throttling - it runs at maximum speed supported by the host CPU.
+</Note>

@@ -1,0 +1,81 @@
+---
+title: Installation
+description: Build the Intel 4004 Toolkit from source using Zig
+---
+
+## Prerequisites
+
+The Intel 4004 Toolkit is built with Zig. You'll need to install Zig before building the project.
+
+<Steps>
+  <Step title="Install Zig">
+    Download and install Zig from [ziglang.org](https://ziglang.org/download/). The toolkit works with current Zig versions.
+    
+    Verify your installation:
+    ```bash
+    zig version
+    ```
+  </Step>
+
+  <Step title="Clone the repository">
+    Get the source code:
+    ```bash
+    git clone <repository-url>
+    cd intel-4004-toolkit
+    ```
+    
+    <Tip>
+    Replace `<repository-url>` with the actual repository URL for this project.
+    </Tip>
+  </Step>
+
+  <Step title="Build the toolkit">
+    Run the Zig build command:
+    ```bash
+    zig build
+    ```
+    
+    This compiles both the assembler and emulator. The executables will be placed in `zig-out/bin/`:
+    - `4004-assembler` - The assembler
+    - `4004-emulator` - The emulator
+  </Step>
+
+  <Step title="Verify the build">
+    Check that the executables were created:
+    ```bash
+    ls zig-out/bin/
+    ```
+    
+    You should see both `4004-assembler` and `4004-emulator`.
+  </Step>
+</Steps>
+
+## What gets built
+
+The Zig build system creates two executable programs:
+
+<CardGroup cols={2}>
+  <Card title="4004-assembler" icon="gears">
+    Converts `.4004` assembly files into executable binaries that can run on the emulator.
+  </Card>
+  
+  <Card title="4004-emulator" icon="terminal">
+    Runs compiled 4004 programs with virtual I/O devices for interactive programs.
+  </Card>
+</CardGroup>
+
+## Build options
+
+The standard Zig build options are available:
+
+```bash
+# Build with optimizations
+zig build -Doptimize=ReleaseFast
+
+# Build for a specific target
+zig build -Dtarget=x86_64-linux
+```
+
+## Next steps
+
+Now that you have the toolkit built, continue to the [quickstart guide](/quickstart) to assemble and run your first Intel 4004 program.
